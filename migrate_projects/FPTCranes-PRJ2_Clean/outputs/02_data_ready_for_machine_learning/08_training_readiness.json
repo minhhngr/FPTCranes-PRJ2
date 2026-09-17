@@ -1,7 +1,0 @@
-{
-  "train_rows": 1201,
-  "locked_test_rows": 298,
-  "encoded_feature_count": 185,
-  "skill_vocabulary_count": 93,
-  "fit_scope": "TRAIN/DEV only; locked test transformed only"
-}

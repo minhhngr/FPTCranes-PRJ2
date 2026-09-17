@@ -1,24 +1,64 @@
 project:
-  name: ai_job_market_salary_prediction
-  display_name: AI Job Market Salary Prediction
-  seed: 42
-  task: supervised_regression
+  name: AI Job Market Segmentation + Salary Prediction
   target: annual_salary_usd
-
-data:
-  raw_path: data/raw/ai_jobs_market_2025_2026.csv
-  canonical_rename:
-    "AI Engineering": job_category
-
-split:
-  strategy: temporal_locked_holdout
-  locked_test:
-    year: 2026
-    month: 3
+  random_seed: 42
+  locked_test_year: 2026
+  locked_test_month: 3
   temporal_cv_folds: 5
+  source_schema_version: v1
+cleaning:
+  canonical_rename:
+    AI Engineering: job_category
+  invalid_category_tokens:
+    - job_category
+  drop_identifier: true
+segmentation:
+  k_min: 2
+  k_max: 8
+  use_family_balancing: true
 
-features:
-  structured:
+  # PCA contract: fit the PCA basis on DEV only. Clustering uses as many PCs
+  # as required to preserve this cumulative variance; PC1/PC2 are display-only.
+  pca_variance_threshold: 0.85
+  pca_min_components: 2
+  pca_max_components: 25
+  visualization_components: 2
+
+  # Optimizer-seed stability gate.
+  stability_seeds: [11, 23, 42, 71, 101]
+  stability_min: 0.90
+
+  # Structural stability gate under row subsampling.
+  resample_stability:
+    enabled: true
+    n_resamples: 8
+    sample_fraction: 0.85
+    min_mean_ari: 0.75
+    random_seed: 2026
+
+  min_cluster_share: 0.05
+  silhouette_tolerance: 0.01
+
+  # Representation robustness study before the official K search.
+  # R0/R2/R3/R4 each refit their own global PCA after the ablation geometry
+  # is formed. R1 uses family-wise PCA with per-family caps and latent balancing.
+  representation_robustness:
+    enabled: true
+    silhouette_tolerance: 0.02
+    screening_stability_seeds: [11, 42, 101]
+    screening_resamples: 6
+    # Family-wise PCA caps stop any one family from dominating simply because
+    # it creates more latent components.
+    family_pca_caps:
+      Job Domain: 3
+      Experience & Education: 3
+      Company & Work Mode: 3
+      Geography: 3
+      Demand / Benefits: 3
+      Skills: 5
+prediction:
+  primary_metric: MAE
+  model_features:
     - job_title
     - job_category
     - years_of_experience
@@ -30,35 +70,9 @@ features:
     - industry
     - demand_score
     - benefits_score_10
-  phase2:
     - required_skills
     - skill_count
-  nominal:
-    - job_title
-    - job_category
-    - city
-    - country
-    - remote_work
-    - industry
-  ordinal:
-    education_required:
-      - Bootcamp/Self-taught
-      - Associate's
-      - Bachelor's
-      - Master's
-      - PhD
-    company_size:
-      - Startup (1-50)
-      - SME (51-500)
-      - Mid-size (501-5000)
-      - Enterprise (5000+)
-      - Big Tech (FAANG+)
-  numeric:
-    - years_of_experience
-    - demand_score
-    - benefits_score_10
-    - skill_count
-  blocked:
+  blocked_features:
     - job_id
     - salary_min_usd
     - salary_max_usd
@@ -71,49 +85,3 @@ features:
     - is_llm_role
     - ai_salary_premium_pct
     - demand_growth_yoy_pct
-  contradictory:
-    - years_of_experience
-    - experience_level
-
-preprocessing:
-  numeric_imputer: median
-  nominal_imputer: most_frequent
-  scale_for_linear_distance_models: robust
-  handle_unknown: ignore
-  skill_delimiter: "|"
-
-analysis:
-  hidden_missing_tokens: ["", "na", "n/a", "none", "null", "nan", "unknown", "-"]
-  top_correlations: 30
-  vif_review: 5.0
-  vif_high: 10.0
-  pairwise_correlation_high: 0.85
-  importance_concentration_warning: 0.80
-  min_segment_rows: 15
-
-modeling:
-  primary_metric: MAE
-  secondary_metrics: [RMSE, R2, MedAE]
-  dummy_strategy: median
-  random_forest:
-    n_estimators: 300
-    min_samples_leaf: 2
-    max_features: 0.8
-  gradient_boosting:
-    n_estimators: 200
-    learning_rate: 0.05
-    max_depth: 2
-    loss: huber
-  svr:
-    C: 100.0
-    epsilon: 0.1
-    gamma: scale
-
-prediction:
-  interval_quantile: 0.90
-  demo_username: admin
-  demo_password: AIJob2026!
-
-artifacts:
-  output_root: outputs
-  bundle_path: artifacts/model_bundle.joblib

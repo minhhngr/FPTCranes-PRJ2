@@ -1,0 +1,838 @@
+{
+  "release_name": "FPTCranes-PRJ2_full_v2",
+  "created_utc": "2026-09-11T03:29:17.797445+00:00",
+  "workflow": "Common Foundation Stage 1-5 -> Branch A A1-A8 -> Branch B B1-B7 -> Integrated Insight -> Streamlit",
+  "key_revision": {
+    "segmentation_k_selection": "Silhouette-primary with ARI stability gate, minimum cluster-share gate, 0.01 practical-tie tolerance, then parsimony tie-break.",
+    "baseline_selected_k": 2,
+    "baseline_selected_algorithm": "KMeans",
+    "baseline_silhouette": 0.38822374571225804,
+    "baseline_stability_ari": 1.0,
+    "baseline_min_cluster_share": 0.4038301415487094,
+    "streamlit_commentary": "Every page includes output/filter-driven interpretation cards.",
+    "new_dataset_ui": "Admin upload -> schema gate -> isolated full pipeline -> switch active evidence workspace.",
+    "branch_b_combination": "Technical-design aligned Branch B plus FPTCranes-PRJ2-main module/output contract indexed from RAR manifest."
+  },
+  "validation": {
+    "overall": "PASS",
+    "passed": 33,
+    "failed": 0,
+    "pytest_passed": 16,
+    "streamlit_runtime": {
+      "status": "NOT_INSTALLED_IN_VALIDATION_RUNTIME",
+      "version": null,
+      "note": "Source/AST validation passed. Install requirements.txt before launching the dashboard.",
+      "error": "module 'streamlit' has no attribute 'set_page_config' (consider renaming '/mnt/data/FPTCranes-PRJ2_full_v2/streamlit.py' if it has the same name as a library you intended to import)"
+    }
+  },
+  "new_data_validation": {
+    "scenario": "Full new-dataset workflow smoke test",
+    "input_change": "Moved the original March-2026 locked period to April-2026 and introduced one unseen job category in that new locked period.",
+    "schema_gate_expected": "PASS",
+    "locked_test_period": "2026-04",
+    "locked_test_rows": 298,
+    "selected_segmentation_algorithm": "KMeans",
+    "selected_k": 2,
+    "segmentation_silhouette": 0.38822374571225804,
+    "best_model": "Random Forest",
+    "unknown_category_handling": "PASS: full pipeline completed with unseen locked-period category",
+    "status": "PASS"
+  },
+  "run_summary": {
+    "run_id": "20260911T032346Z",
+    "source_file": "/mnt/data/FPTCranes-PRJ2_full_v2/data/raw/ai_jobs_market_2025_2026.csv",
+    "source_sha256": "7fa4b10fcecfbdd23823c0b0234786b67e0d7f28097c0e8d7faac41361c5cc45",
+    "workspace_root": "/mnt/data/FPTCranes-PRJ2_full_v2",
+    "raw_shape": [
+      1500,
+      25
+    ],
+    "clean_shape": [
+      1499,
+      24
+    ],
+    "development_rows": 1201,
+    "locked_test_rows": 298,
+    "segmentation": {
+      "algorithm": "KMeans",
+      "k": 2,
+      "silhouette": 0.38822374571225804,
+      "calinski_harabasz": 916.0484201379949,
+      "davies_bouldin": 1.0166263169964278,
+      "stability_ari": 1.0,
+      "min_cluster_share": 0.4038301415487094,
+      "quality_band": "moderate separation",
+      "encoded_dimensions": 199,
+      "pca_components": 2,
+      "fit_rows": 1201,
+      "target_used_for_clustering": false,
+      "selection_policy": "silhouette-primary + stability/balance gates + parsimonious tie-break",
+      "rationale": {
+        "selected_algorithm": "KMeans",
+        "selected_k": 2,
+        "selected_silhouette": 0.38822374571225804,
+        "selected_stability_ari": 1.0,
+        "selected_min_cluster_share": 0.4038301415487094,
+        "selected_quality_band": "moderate separation",
+        "raw_best_silhouette_algorithm": "GMM",
+        "raw_best_silhouette_k": 2,
+        "raw_best_silhouette": 0.39318505364438866,
+        "selected_is_raw_best": false,
+        "silhouette_tolerance": 0.01,
+        "stability_threshold": 0.9,
+        "minimum_cluster_share_threshold": 0.05,
+        "selection_policy": [
+          "Keep only candidates with ARI stability at or above the configured threshold and no tiny cluster below the minimum share.",
+          "Use silhouette as the primary separation metric.",
+          "Treat candidates within 0.010 silhouette points of the best as practically tied.",
+          "Within that near-best set choose the smaller K, then prefer K-Means over GMM for a simpler, easier-to-explain partition.",
+          "Use Calinski-Harabasz, Davies-Bouldin, K-Means inertia and GMM BIC/AIC as supporting diagnostics, not silent overrides."
+        ],
+        "decision_note": "Selected KMeans K=2 with silhouette 0.388, stability ARI 1.000, and minimum cluster share 40.4%. The highest-silhouette eligible candidate is GMM K=2 at 0.393; the difference is within the 0.010 practical-tie tolerance, so the simpler partition is preferred.",
+        "runner_up": {
+          "algorithm": "GMM",
+          "k": 2,
+          "silhouette": 0.39318505364438866,
+          "stability_ari": 0.9986573570519998,
+          "min_cluster_share": 0.3513738551207327
+        }
+      }
+    },
+    "best_model": "Random Forest",
+    "locked_test_metrics": {
+      "MAE": 14735.12606698571,
+      "RMSE": 29111.29612088309,
+      "R2": 0.81269038067487,
+      "MedAE": 4346.63809712512,
+      "prediction_interval_abs_error_q90": 40067.74765859205
+    },
+    "python": "3.13.5",
+    "pandas": "2.2.3",
+    "numpy": "2.3.5",
+    "scikit_learn": "1.8.0",
+    "created_utc": "2026-09-11T03:24:15.918165+00:00"
+  },
+  "file_count_excluding_manifest": 144,
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 76,
+      "sha256": "eeb490eae5adca806dcbdeb81261a0302a6bd58da8a4884c32cc732791936b16"
+    },
+    {
+      "path": "MERGE_NOTES.md",
+      "bytes": 1765,
+      "sha256": "e6ada428087241103eb9b5a9b37fff5c7972f4e3ef81e5e36e058faf284ffd4a"
+    },
+    {
+      "path": "OPTIMIZATION_NOTES.md",
+      "bytes": 1544,
+      "sha256": "fef8bc62a82098e1cbf72333d7310e8ef74431e5a971a5d9bbcb282a98549e03"
+    },
+    {
+      "path": "README.md",
+      "bytes": 9000,
+      "sha256": "ed6462c9150840577d0cb111bd20fddec7f8da8426647bf42a1e8da5b3c51754"
+    },
+    {
+      "path": "VALIDATION.md",
+      "bytes": 1127,
+      "sha256": "4cacd241dd8ade1bb979023c9251dd00d1f02b2b4bfee333efe2eeceb408e381"
+    },
+    {
+      "path": "artifacts/11_bundle_equivalence.json",
+      "bytes": 95,
+      "sha256": "af248384ce36ebc173dc234f720c34d1f2b1917c21abdc7d9db9fb448bd46d34"
+    },
+    {
+      "path": "artifacts/cluster_bundle.joblib",
+      "bytes": 32716,
+      "sha256": "61020789d944514f0a23a9f70c9c6948d3ff17266fdcd16b86ec43f15184f35f"
+    },
+    {
+      "path": "artifacts/feature_columns.json",
+      "bytes": 287,
+      "sha256": "f7e36fdb5ad174f72cc17c6adbd23575473438a35b5d22c5b91868c6c0c906b1"
+    },
+    {
+      "path": "artifacts/feature_contract.json",
+      "bytes": 320,
+      "sha256": "5583d4c3a917dcb263ea22e155828ae76531871811f2ac3c5538c92b35653b59"
+    },
+    {
+      "path": "artifacts/metadata.json",
+      "bytes": 6791,
+      "sha256": "c2818c236d3243f5bb739faf9d16ea88bc57eef650c4cb9352796063fdcede90"
+    },
+    {
+      "path": "artifacts/model.pkl",
+      "bytes": 14798042,
+      "sha256": "c46cd97b64ddea52225203102f22012b28c566b2af43c02390c117d43263dda3"
+    },
+    {
+      "path": "artifacts/model_bundle.joblib",
+      "bytes": 14798042,
+      "sha256": "c46cd97b64ddea52225203102f22012b28c566b2af43c02390c117d43263dda3"
+    },
+    {
+      "path": "artifacts/preprocessor.pkl",
+      "bytes": 7561,
+      "sha256": "d41b64e7084dfdd00c0aa062ee6a88a1cf13043ce5c3df76369ab301abefe4b8"
+    },
+    {
+      "path": "artifacts/preprocessor_ml_ready.joblib",
+      "bytes": 7561,
+      "sha256": "d41b64e7084dfdd00c0aa062ee6a88a1cf13043ce5c3df76369ab301abefe4b8"
+    },
+    {
+      "path": "artifacts/salary_preprocessor_train_only.joblib",
+      "bytes": 7561,
+      "sha256": "d41b64e7084dfdd00c0aa062ee6a88a1cf13043ce5c3df76369ab301abefe4b8"
+    },
+    {
+      "path": "config/project.yaml",
+      "bytes": 1128,
+      "sha256": "0cfcef0c6f032120c4ab4e86f5032824865bfe61503379458050a9fd80932e9b"
+    },
+    {
+      "path": "data/raw/ai_jobs_market_2025_2026.csv",
+      "bytes": 378914,
+      "sha256": "7fa4b10fcecfbdd23823c0b0234786b67e0d7f28097c0e8d7faac41361c5cc45"
+    },
+    {
+      "path": "docs/BRANCH_B_COMBINATION.md",
+      "bytes": 2911,
+      "sha256": "4a3683afe248a1769caf57f08459616c106a938a02df98bdaed34006edc93101"
+    },
+    {
+      "path": "docs/Document_QD Project KHDL&AI(8).docx",
+      "bytes": 15502280,
+      "sha256": "21d8ae81e652c60138236db88b7d26a3b6dfb52fc1e151447c56faaffd00eb46"
+    },
+    {
+      "path": "docs/FPTCranes-PRJ2-main_branch_b_manifest.json",
+      "bytes": 12722,
+      "sha256": "63444e3059b3e2cd4daa002ac2709b7c13d1cd2f3a72fa3831421d5b3c31ed45"
+    },
+    {
+      "path": "docs/FPTCranes-PRJ2-main_manifest.csv",
+      "bytes": 55918,
+      "sha256": "f27edfd57fb6a7582a9ddcf98847c070f360a5533cc4fffd2c9010bbfc8902f5"
+    },
+    {
+      "path": "docs/LEGACY_FEATURE_MERGE.md",
+      "bytes": 2154,
+      "sha256": "287c70136d433971588925ddf777dff7cbb6a0e2d182f20082fc3b5d1c7ed697"
+    },
+    {
+      "path": "docs/STREAMLIT_CONTENT_MAP.md",
+      "bytes": 3463,
+      "sha256": "ccff0afe18592b1d673ff1b20cec6ca611bcf8f66aa0a819ceeacf26a37bd6d1"
+    },
+    {
+      "path": "docs/TECHNICAL_ALIGNMENT.md",
+      "bytes": 746,
+      "sha256": "008a587276e70e3fa3ea152d219d52f4a346a3ca1db6bc82dc93f86fcd93004f"
+    },
+    {
+      "path": "docs/UNSUPERVISED_K_SELECTION.md",
+      "bytes": 2337,
+      "sha256": "0b5ce804f3f27956c23e287a5cc7a0818eff82aaa66008dda3b955f77e191415"
+    },
+    {
+      "path": "docs/legacy_reference/FPTCranes-PRJ2-main.rar",
+      "bytes": 34363544,
+      "sha256": "fa092ed80b4c11f327358c83680c806689e49e3db6a8064fba3e0eec8dff2e3f"
+    },
+    {
+      "path": "docs/legacy_reference/FPTCranes-PRJ2_full(3).7z",
+      "bytes": 38620860,
+      "sha256": "c424856099bda5139b29b1609f441636699f19bfc7cc824df7aa6570ce7aeeda"
+    },
+    {
+      "path": "docs/pipelines/Pipeline_AI-salary-overall.png",
+      "bytes": 1885416,
+      "sha256": "383613332ec7691dd1a4378f3197f90810db23c255ec63aa06f98440fd77acb4"
+    },
+    {
+      "path": "docs/pipelines/Pipeline_AI-salary-prediction.png",
+      "bytes": 1559222,
+      "sha256": "2ca79111e53c0b48bbf70261ab562620f44026344e02bd1cdb1f6882470a466f"
+    },
+    {
+      "path": "docs/pipelines/Pipeline_AI-salary-segmentation.png",
+      "bytes": 1559774,
+      "sha256": "2dda35da86bf2f217133d95bc2ba3c0483d61ecb0d7345f197077dc31132ac01"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/basic_clean.csv",
+      "bytes": 362800,
+      "sha256": "34033af12c0bc67951e21f87174eb3e3163694bed05db56337db2cf0374117b3"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/basic_clean_audit.json",
+      "bytes": 310,
+      "sha256": "29b9f76df3e3469de36eba2662aacbb63228527c6bc6abd88c5daa5c20b6c68a"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/categorical_frequency_summary.csv",
+      "bytes": 4647,
+      "sha256": "85ab82a0836737483034a7a27b5790a38d298cba7c7d06ae64d066de3fdfa1b9"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/contradiction_summary.csv",
+      "bytes": 586,
+      "sha256": "f230a24064cef3eeb578af9c75ec68498937cff6a5a558e44991dc0138221757"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/experience_by_level.csv",
+      "bytes": 351,
+      "sha256": "71a1520bf368fa71d0d16f7e31d34338d77e0f3721b4916d3a9036807b793026"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/integrity_row_flags.csv",
+      "bytes": 213976,
+      "sha256": "fff6a061e2d1ce8c5a80f2db1be5a4c7c56da5f3df2073ce008ffb57bbf4bd4e"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/numeric_descriptive_summary.csv",
+      "bytes": 1207,
+      "sha256": "fc93382311d30af0fe453318899c273de3b65e6ce64cf38da2403b881367df9e"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/raw_profile.csv",
+      "bytes": 872,
+      "sha256": "6730403347e30157c9b7ae850309ac4f61f43e51a5176234c657ea83ee66f793"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/salary_by_domain.csv",
+      "bytes": 540,
+      "sha256": "894d17f4693d4f39788bd93a82399889d21b34923c16174f5ab6e71961890e1d"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/salary_by_years.csv",
+      "bytes": 510,
+      "sha256": "ace59dc3c62e9dd8662b05cd0fab284a6dbdcb666701189cb6caec4849befd5d"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/salary_range_status.csv",
+      "bytes": 61,
+      "sha256": "361dc9bb945bda79e5a764cd74d88238015e4c53371f5cee7bde45977071a523"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/salary_tier_crosstab.csv",
+      "bytes": 266,
+      "sha256": "2be8a3a62001d81561427a1ab34d8a98d90342082f7adf1f90cccfd08083813a"
+    },
+    {
+      "path": "outputs/01_data_basic_clean/target_summary.json",
+      "bytes": 171,
+      "sha256": "c1602e7ce0ab897d01a26ea611c757a11e88c78c0b6afc76555a7059a31de6c6"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_X_locked_test_encoded.csv",
+      "bytes": 254183,
+      "sha256": "2221edfaa8be316f2c6dcedceda43ce04e6215e181947d8444434dc7db7a8acb"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_X_train_encoded.csv",
+      "bytes": 1007439,
+      "sha256": "596f2394382189e33b9cb216898a36d8bf0075bebf1674750afac05ffd419ce2"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_before_after_processing.csv",
+      "bytes": 329,
+      "sha256": "60563192f3b792111f9fe404781354f746286fe14ed5148fc4c9063b08dcb466"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_monthly_distribution.csv",
+      "bytes": 504,
+      "sha256": "981cfe1849f629e04cbc5b878b84d954f45b73c96f1f002fb2bd3445ca8fd59c"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_split_summary.csv",
+      "bytes": 226,
+      "sha256": "de5787a76a252aaeb821469ef549e78dbdffeb3d10fc68adb0d990b398d833bc"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_training_readiness.json",
+      "bytes": 448,
+      "sha256": "808cff90a6f093b9b7a47e805fed476003a3c6c8034f3e1cd1f7b488508d0a4e"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_y_locked_test.csv",
+      "bytes": 2093,
+      "sha256": "90ced81db61799f25485abe6189a2154f8fef60a75c20567f165362146a65643"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/08_y_train.csv",
+      "bytes": 8398,
+      "sha256": "cc5b901a66eb7e14ddd3c509c32262c283e81ca0237fbe6e0a9d73e96421916e"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/ablation_results.csv",
+      "bytes": 1347,
+      "sha256": "bbf68cd66a16d7060fc2eb451233c7879114dd0ab33cce4dec5d8fbaa84f8653"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/development_raw.csv",
+      "bytes": 293194,
+      "sha256": "129e34b9afe0f64930b32b1ea51234eafe3eb73cb622b31674abdc0c2593951b"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/feature_policy.csv",
+      "bytes": 1711,
+      "sha256": "421bb3be122b932b98f182101e8a4caff4ce3ac5b01a0ddd2bcef08825123485"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/locked_test_preprocessed.csv",
+      "bytes": 254183,
+      "sha256": "2221edfaa8be316f2c6dcedceda43ce04e6215e181947d8444434dc7db7a8acb"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/locked_test_raw.csv",
+      "bytes": 72978,
+      "sha256": "fba19cd4a9d3680ff28f4344589df948536bc051aea93da54820f61e6ebf82c0"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/monthly_split_counts.csv",
+      "bytes": 369,
+      "sha256": "cb5c056faa900ed12962d59c8aa437d2042d27df3635301f57276ec84b409eb6"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/numeric_scaling_summary.csv",
+      "bytes": 612,
+      "sha256": "36c6ebb73987de6c80750ba04d39607c7c7512e5b72d24091f1f2afad82594a4"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/preprocessing_contract.json",
+      "bytes": 7273,
+      "sha256": "64f42f912ceec5473ffb47fc9b27863506b028fd258d6e903e24efcfde526820"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/preprocessing_feature_map.csv",
+      "bytes": 9491,
+      "sha256": "57f328963955d498d0b68f796451ac030b73921ee84525776f15a85d32bff634"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/shared_prepared_feature_base.csv",
+      "bytes": 365815,
+      "sha256": "00c2f4dad5ac9240205e3542e410d18b31883708bbf87108225ebb0ab2aa2eba"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/skill_target_correlations.csv",
+      "bytes": 5299,
+      "sha256": "554d674d655a2667b2df21f5eb41220b55e73a266ca24e4ee1e5655404de22ac"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/skill_token_summary.csv",
+      "bytes": 5234,
+      "sha256": "89411f05b9e84416aaafa96ff07025c09fefbb74b0aa637e6b88370e44aca238"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/temporal_split_summary.json",
+      "bytes": 280,
+      "sha256": "446da18627793aa01adef8a62b057cccc41c248707c7de5521e9e44b46e038fa"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/train_encoded_correlations.csv",
+      "bytes": 13611,
+      "sha256": "0bcb74e22279df7aacd41291c799d867f4d2648d165a6448a6e6cece89f63840"
+    },
+    {
+      "path": "outputs/02_data_ready_for_ml/train_preprocessed.csv",
+      "bytes": 1007439,
+      "sha256": "596f2394382189e33b9cb216898a36d8bf0075bebf1674750afac05ffd419ce2"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/candidate_cluster_assignments.csv",
+      "bytes": 288829,
+      "sha256": "61fccd3e39fedcd77e12c197cb7856477a54209cedc214cb663128884e5e5013"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/cluster_assignments.csv",
+      "bytes": 434683,
+      "sha256": "f48ba26ba414cddbc3420e2bd01fb761baf5ad49d054c5e8f1e6333e57422b2e"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/cluster_evaluation.csv",
+      "bytes": 3871,
+      "sha256": "d2181783947e0d7fc25cfd6dd83147010f45a3fc904457a8b4dc9da3b82947e6"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/cluster_profiles.csv",
+      "bytes": 354,
+      "sha256": "36965fc7b76ed2d7c6cd5dc1e9952d9864904c9f5dde8e45258c222df48261b1"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/cluster_selection_summary.csv",
+      "bytes": 330,
+      "sha256": "19ecb39843db670ddc7417ddadc2317efeb65c9954d5b6b2d649dbc0806c79ea"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/family_dimensions.csv",
+      "bytes": 250,
+      "sha256": "c49798c580c212dfe4b7a24090d3dc6f9e1a37f578875333207845d9bc05d4dd"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/k_selection_rationale.json",
+      "bytes": 1511,
+      "sha256": "d2e8af1caecab60e43a9cb02caa551e83ba6e4d88054bd466835a386ca6ee77c"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/pca_coordinates.csv",
+      "bytes": 68868,
+      "sha256": "b22261f43127e8415e622ae21ad124b7c2afeac8a2abb0a6ab95754b95c950a1"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/pca_variance.csv",
+      "bytes": 143,
+      "sha256": "6ce6812b07d12acac8d05bfa40337734a6035a46dea38de37c458883bf78c5f8"
+    },
+    {
+      "path": "outputs/03_ai_job_market_segmentation/segmentation_metadata.json",
+      "bytes": 2056,
+      "sha256": "818cc762273d7213bb794f620778453fbb71444976b87d027f663449c09e5b0d"
+    },
+    {
+      "path": "outputs/04_model_comparison/09_feature_family_ablation.csv",
+      "bytes": 1258,
+      "sha256": "c3aa4893161d9ce2bafffa05d617695a602c623a8bc846f5f22e6287c9f6aefa"
+    },
+    {
+      "path": "outputs/04_model_comparison/09_feature_importance_by_fold.csv",
+      "bytes": 58421,
+      "sha256": "8e615a667f233c28d256e9e5eacd400467b82aa400f7dedf949d331ea34e17e6"
+    },
+    {
+      "path": "outputs/04_model_comparison/09_feature_importance_drift.csv",
+      "bytes": 26685,
+      "sha256": "fb89a1838c2c9bc16e13ce914d488974652c57be3b0dfb0e37ced4f2f0d9e3aa"
+    },
+    {
+      "path": "outputs/04_model_comparison/09_fold_stability_mae.csv",
+      "bytes": 2510,
+      "sha256": "77097ce1f79b8649c84108e2d40f7f48e939f6aaca04c57c1f4f562edcfda9fb"
+    },
+    {
+      "path": "outputs/04_model_comparison/09_model_comparison_fold_metrics.csv",
+      "bytes": 3777,
+      "sha256": "0976e13d61dc4e6a2cf67aeef1f4fcee8412b753afa4cfb25fcdf698051ddd51"
+    },
+    {
+      "path": "outputs/04_model_comparison/09_model_comparison_temporal_cv.csv",
+      "bytes": 843,
+      "sha256": "8a29d1fd16b79d7eb697d844e8a163a2b94f3044da8a8e3dd77e608bbd77f81b"
+    },
+    {
+      "path": "outputs/04_model_comparison/09_model_runtime_performance.csv",
+      "bytes": 329,
+      "sha256": "d99d77109e550ef5a7d9af5c08afd8d212829abf960c214f71b63e58e2291172"
+    },
+    {
+      "path": "outputs/04_model_comparison/cv_fold_metrics.csv",
+      "bytes": 3777,
+      "sha256": "0976e13d61dc4e6a2cf67aeef1f4fcee8412b753afa4cfb25fcdf698051ddd51"
+    },
+    {
+      "path": "outputs/04_model_comparison/model_comparison.csv",
+      "bytes": 843,
+      "sha256": "8a29d1fd16b79d7eb697d844e8a163a2b94f3044da8a8e3dd77e608bbd77f81b"
+    },
+    {
+      "path": "outputs/05_best_model/10_best_model_tuning_results.csv",
+      "bytes": 450,
+      "sha256": "e008ef3fbb596f1a8beb8da188ac4ee949ac631d51a808229e483bd30eb29faa"
+    },
+    {
+      "path": "outputs/05_best_model/10_encoded_feature_importance.csv",
+      "bytes": 9798,
+      "sha256": "c3de5878333766301486b2f75e2c0a43fdbc1b8845833f4486182a7e4f6999b2"
+    },
+    {
+      "path": "outputs/05_best_model/10_error_slices.csv",
+      "bytes": 3627,
+      "sha256": "478f26846f140ae9b95887c162471f72c2974efaab0d7e012c25ad8ce2afce5e"
+    },
+    {
+      "path": "outputs/05_best_model/10_final_locked_test_metrics.csv",
+      "bytes": 140,
+      "sha256": "cb8e2ea323bdcf1ce6c5829f38525bba405549997a18104a5b527ef299f8cb9c"
+    },
+    {
+      "path": "outputs/05_best_model/10_locked_test_predictions_with_error.csv",
+      "bytes": 87128,
+      "sha256": "1428fbb78edc33e604d2894b5d6e559d17635ec9dae5d13cc4790c66280c721a"
+    },
+    {
+      "path": "outputs/05_best_model/10_raw_feature_permutation_importance.csv",
+      "bytes": 711,
+      "sha256": "deb5b0457fe0627cb6218e1279dbc37ed77cebc6f9d5cfccaf1f4bb02f5c2b7b"
+    },
+    {
+      "path": "outputs/05_best_model/11_deployment_artifact_manifest.csv",
+      "bytes": 375,
+      "sha256": "abfac805c486580493461c83411834941c8b8816adc9b0af7fc01c499eba054b"
+    },
+    {
+      "path": "outputs/05_best_model/encoded_importance.csv",
+      "bytes": 9798,
+      "sha256": "c3de5878333766301486b2f75e2c0a43fdbc1b8845833f4486182a7e4f6999b2"
+    },
+    {
+      "path": "outputs/05_best_model/error_by_company_size.csv",
+      "bytes": 547,
+      "sha256": "7f9173a6f9e51d4d9bcd4629dd16c6486dc6cbf9b36da6cc27f54dbee12556a1"
+    },
+    {
+      "path": "outputs/05_best_model/error_by_country.csv",
+      "bytes": 1171,
+      "sha256": "2f80ef871e0334c37563990815484f853a0ee1e6494ba3c9631c417d86e6dd38"
+    },
+    {
+      "path": "outputs/05_best_model/error_by_experience_band.csv",
+      "bytes": 420,
+      "sha256": "46e53782f710008662373b8049b2635140d35816906acb8559cc07b6b5c909bf"
+    },
+    {
+      "path": "outputs/05_best_model/error_by_job_category.csv",
+      "bytes": 1053,
+      "sha256": "221b67a7c0ed2f06fe4788ea46cc4db100199a8a9b55af168b93527615491e63"
+    },
+    {
+      "path": "outputs/05_best_model/error_by_remote_work.csv",
+      "bytes": 333,
+      "sha256": "df04fbdd36e727dcbb1f0d0746bce05904ba055f1a4ce21daca22947cd455e7f"
+    },
+    {
+      "path": "outputs/05_best_model/locked_test_metrics.json",
+      "bytes": 172,
+      "sha256": "631a76ec1b98741b64f00b031b09a6eb4672cb66d99656bc9373e101cf554786"
+    },
+    {
+      "path": "outputs/05_best_model/locked_test_predictions.csv",
+      "bytes": 87128,
+      "sha256": "1428fbb78edc33e604d2894b5d6e559d17635ec9dae5d13cc4790c66280c721a"
+    },
+    {
+      "path": "outputs/05_best_model/raw_permutation_importance.csv",
+      "bytes": 711,
+      "sha256": "deb5b0457fe0627cb6218e1279dbc37ed77cebc6f9d5cfccaf1f4bb02f5c2b7b"
+    },
+    {
+      "path": "outputs/05_best_model/tuning_results.csv",
+      "bytes": 450,
+      "sha256": "e008ef3fbb596f1a8beb8da188ac4ee949ac631d51a808229e483bd30eb29faa"
+    },
+    {
+      "path": "outputs/06_salary_prediction/12_locked_test_prediction_examples.csv",
+      "bytes": 3305,
+      "sha256": "57081c1d583e00f4a15c355578c26d6b3f365d633ddbe819ee46356a75b22432"
+    },
+    {
+      "path": "outputs/06_salary_prediction/12_prediction_summary.csv",
+      "bytes": 154,
+      "sha256": "5ee8ef1e10bf4387570d420e06930e58ec53deb329d6a01d20bc5a6ec9bd70fe"
+    },
+    {
+      "path": "outputs/06_salary_prediction/model_metadata.json",
+      "bytes": 6791,
+      "sha256": "c2818c236d3243f5bb739faf9d16ea88bc57eef650c4cb9352796063fdcede90"
+    },
+    {
+      "path": "outputs/06_salary_prediction/serialization_check.json",
+      "bytes": 95,
+      "sha256": "af248384ce36ebc173dc234f720c34d1f2b1917c21abdc7d9db9fb448bd46d34"
+    },
+    {
+      "path": "outputs/07_integrated_insight/predicted_salary_by_segment.csv",
+      "bytes": 186,
+      "sha256": "5413fa0971080df52e8ea0ded162e7e02d5be000bdf644c9c37cb93c40e289be"
+    },
+    {
+      "path": "outputs/07_integrated_insight/segment_city_country_summary.csv",
+      "bytes": 1437,
+      "sha256": "979ec36f35702905c93a3559a625dc9e7309fc4773e2453947d504a3e3b85f1e"
+    },
+    {
+      "path": "outputs/07_integrated_insight/segment_salary_summary.csv",
+      "bytes": 219,
+      "sha256": "68186fe28b2fabe48c86796ffb154a0adad28491b7d6cbc95d4364c004457ac4"
+    },
+    {
+      "path": "outputs/08_full_pipeline/pipeline_status.csv",
+      "bytes": 1067,
+      "sha256": "2191ed4952a3a73d5e2763c995e5036527184834a81f62d8b2f59cc94c4fdbb6"
+    },
+    {
+      "path": "outputs/08_full_pipeline/run_summary.json",
+      "bytes": 2954,
+      "sha256": "3550270ecac7df60b56b193834c4fc8d8dde46f02e69cae447389a4f9a721700"
+    },
+    {
+      "path": "outputs/new_data_validation.json",
+      "bytes": 565,
+      "sha256": "a26f6ff38b4e35227b45f1bff02a737f7cb495e56ab47d6f82957c0416509993"
+    },
+    {
+      "path": "outputs/validation_report.json",
+      "bytes": 8590,
+      "sha256": "48689192b9a3fed161bb2520b3ec1396d3d794435d810374be68d0226cc28334"
+    },
+    {
+      "path": "pipeline.py",
+      "bytes": 872,
+      "sha256": "27584578e0ebace19bac7e6f80185cc90cb09760737a8ddc0448b75baead878a"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 144,
+      "sha256": "901a676584368f831db3eddfc25286b27d75bf6f764bca5188839e3cfa77df80"
+    },
+    {
+      "path": "src/ai_job_market/__init__.py",
+      "bytes": 59,
+      "sha256": "0d2cfbb6f7639c374e4f428fbbd304f2069fa4f1d1a37a6aac886ca172eea110"
+    },
+    {
+      "path": "src/ai_job_market/core.py",
+      "bytes": 73955,
+      "sha256": "a3dcd2fa088e0f1c9cd3ebab21ee2c0ca42fac8d1293f1aa2f989ba34ad2f169"
+    },
+    {
+      "path": "src/components/__init__.py",
+      "bytes": 35,
+      "sha256": "40aafa5d15566e3e398d14f4e5da4551cb272c7be9cd52b5044fb6187fea5005"
+    },
+    {
+      "path": "src/components/auth.py",
+      "bytes": 1209,
+      "sha256": "8822dd4b00fe2332b65687af75cd0db3a8c5cbe36ea052b9f9630b4fbf2f3fe7"
+    },
+    {
+      "path": "src/components/data_source.py",
+      "bytes": 5652,
+      "sha256": "f8231a3a0f78af49b49b8f51a4750f4a1cef53f71800dfd8deedfee990f42a01"
+    },
+    {
+      "path": "src/pages/__init__.py",
+      "bytes": 32,
+      "sha256": "afcffec2c17deb5c4b6848c20c3a595290ed880db67babbc5e28b64ed38bc414"
+    },
+    {
+      "path": "src/pages/common.py",
+      "bytes": 6858,
+      "sha256": "04e5b503743816f1054d9eadc7ebc2911d384ffa4ae9c860f6c7ce14675cbc97"
+    },
+    {
+      "path": "src/pages/page01_data_basic_clean.py",
+      "bytes": 18895,
+      "sha256": "a450758aeabc68a4bbf6ab7eb4e9df737ed2001ffa9ca95d57dbb2c53b594bb5"
+    },
+    {
+      "path": "src/pages/page02_data_ready.py",
+      "bytes": 16330,
+      "sha256": "891c8e476ec29ab9375a41a08be01a1fe96b9d47641138d10568fe6d98e3bfea"
+    },
+    {
+      "path": "src/pages/page03_segmentation.py",
+      "bytes": 22177,
+      "sha256": "3ebc0e7256a2a0c444717aff8ee49c25d21ffd867775bfeda8d7d8b85a2bcd2a"
+    },
+    {
+      "path": "src/pages/page04_model_comparison.py",
+      "bytes": 11776,
+      "sha256": "4e1b0090af746e57b918c8e63de2074c177aecb4570dca3d6dc45b22a9138469"
+    },
+    {
+      "path": "src/pages/page05_best_model.py",
+      "bytes": 14129,
+      "sha256": "b263e29a1fa9a2bba0084439723bce863f367e51f3defe77fd5c5e24fc756211"
+    },
+    {
+      "path": "src/pages/page06_prediction.py",
+      "bytes": 11509,
+      "sha256": "9a1bdbf687478b352768319b87bc6dcbe184ab7c02dc1c1fd840b8a1216289a4"
+    },
+    {
+      "path": "src/pages/page07_integrated.py",
+      "bytes": 10906,
+      "sha256": "181e3e7bc57d830a3cbcb47f371faf12276ed0765cfcdcee8200f9afbadbeffd"
+    },
+    {
+      "path": "src/pages/page08_full_pipeline.py",
+      "bytes": 8021,
+      "sha256": "5652dea87c587e5e54a6f564851fc263c862e1352750a43714caf34336abb559"
+    },
+    {
+      "path": "src/pipeline/__init__.py",
+      "bytes": 89,
+      "sha256": "0f57d54146ccc2f22fe7022e87377cb233a44de22e129992921b386e1837bac7"
+    },
+    {
+      "path": "src/pipeline/best_model_selection_feature_importance_review.py",
+      "bytes": 332,
+      "sha256": "b958ca40cf15ff0d49ad1a8f0dcdc0eb1c21c4cd3e3c420e70c8421cc7a6bfc3"
+    },
+    {
+      "path": "src/pipeline/model_training_comparison.py",
+      "bytes": 328,
+      "sha256": "39eb0e328a4a2a1803202e6cb2ff3c96b9cb4d7ce191b9795f1d2d7375779813"
+    },
+    {
+      "path": "src/pipeline/train_test_split.py",
+      "bytes": 122,
+      "sha256": "00501df250859ab7032a75d25cac25ee44cdb2e8fdd2e9f5ca878ace4478797a"
+    },
+    {
+      "path": "src/training/__init__.py",
+      "bytes": 194,
+      "sha256": "f13fac27ea374443b715d4863af9737b3656a1c37f7e9a33965befb5b7f59c83"
+    },
+    {
+      "path": "src/training/ablation_study.py",
+      "bytes": 132,
+      "sha256": "4581f97f284549aad213b5a7174635e168b33a14671e43f6283acedfd54164cc"
+    },
+    {
+      "path": "src/training/build_model_pipeline.py",
+      "bytes": 153,
+      "sha256": "f3edd0abdc03cc0b31f8a6c3d361f42477ab497f4538a5d3e23e6a0a21e4f8b7"
+    },
+    {
+      "path": "src/training/build_preprocessor.py",
+      "bytes": 210,
+      "sha256": "866ba6c8326ab5757287620b650088f579afce3b9f223ec854a40b2584e385c9"
+    },
+    {
+      "path": "src/training/model_catalog.py",
+      "bytes": 80,
+      "sha256": "d711013fb81e2d9a2544e35f56a0dd2c9463ad6d71cdf093ff4e520d4e5b423d"
+    },
+    {
+      "path": "src/training/temporal_cv.py",
+      "bytes": 166,
+      "sha256": "3809846e0f263031b30d978b5f2e81126037c566d4ebcf798cd7c8f15c9e64e9"
+    },
+    {
+      "path": "src/training/tuning.py",
+      "bytes": 142,
+      "sha256": "145ab2a23b1e8472e79f06ad3234efbd2e95427c7caacf798c0a2de80c151054"
+    },
+    {
+      "path": "streamlit.py",
+      "bytes": 1657,
+      "sha256": "04c457f2624a8d30562a4143d4786bc5c50d4892916a30140912a22736831092"
+    },
+    {
+      "path": "tests/test_release_contract.py",
+      "bytes": 8813,
+      "sha256": "0292966131a9d2cada2f70aec48da2147be8fbaa956835651e17d0893ac9a6b6"
+    },
+    {
+      "path": "validate_release.py",
+      "bytes": 13218,
+      "sha256": "4527cc2b855294f5a6ea0120174daca7e2113d6cce5c7b04163ff1ce2c0599bb"
+    }
+  ]
+}

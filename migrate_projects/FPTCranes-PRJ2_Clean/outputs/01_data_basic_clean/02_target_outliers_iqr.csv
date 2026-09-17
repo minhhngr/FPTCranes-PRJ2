@@ -1,9 +1,0 @@
-job_id,job_title,AI Engineering,experience_level,years_of_experience,annual_salary_usd,posting_year,posting_month
-AIJOB0001,AI Agent Developer,AI Engineering,Senior (6-9 yrs),1,384000,2026,3
-AIJOB0002,Prompt Engineer,AI Engineering,Senior (6-9 yrs),1,384000,2026,1
-AIJOB0003,LLM Engineer,AI Engineering,Senior (6-9 yrs),1,384000,2026,1
-AIJOB0006,AI Agent Developer,AI Engineering,Entry (0-2 yrs),5,374400,2026,1
-AIJOB0004,Data Engineer (AI),AI Engineering,Senior (6-9 yrs),1,374400,2026,3
-AIJOB0005,AI Product Manager,AI Engineering,Lead (10+ yrs),1,374400,2026,1
-AIJOB0007,AI Security Engineer,AI Engineering,Mid (3-5 yrs),1,374400,2026,1
-AIJOB0008,Senior ML Engineer,AI Engineering,Mid (3-5 yrs),1,374400,2025,9

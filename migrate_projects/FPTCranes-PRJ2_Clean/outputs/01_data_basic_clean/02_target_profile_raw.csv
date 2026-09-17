@@ -1,2 +1,0 @@
-count,min,max,mean,median,std,q1,q3,iqr,lower_iqr_bound,upper_iqr_bound,outlier_count,high_outlier_count
-1500,90000.0,384000.0,194892.0,180000.0,66506.82201285443,144750.0,236250.0,91500.0,7500.0,373500.0,8,8

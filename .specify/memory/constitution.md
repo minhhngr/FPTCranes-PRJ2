@@ -1,16 +1,21 @@
 <!--
 Sync Impact Report
-- Version change: 1.1.0 -> 1.1.1
+- Version change: 1.1.1 -> 1.2.0
 - Modified principles:
-  - VI. Model Evaluation Documentation: added sub-requirement 9 (visualization)
+  - IV. Offline Training, Read-Only Reporting -> IV. Offline Training, Streamlit Presentation Boundary
+  - V. Honest Interpretation and Secure Defaults -> V. Honest Interpretation and Universal Input Validation
+  - VI. Model Evaluation Documentation -> VI. Model Evaluation Documentation
+- Added principles:
+  - VII. Graphify-Guided, Karpathy-Simple Changes
 - Added sections: none
 - Removed sections: none
 - Templates requiring updates:
-  - ✅ .specify/templates/plan-template.md (no update needed)
-  - ✅ .specify/templates/spec-template.md (no update needed)
-  - ✅ .specify/templates/tasks-template.md (no update needed)
-  - ✅ README.md (no stale references)
-  - ✅ Command templates: directory not present; no stale references found
+  - ✅ .specify/templates/plan-template.md
+  - ✅ .specify/templates/spec-template.md
+  - ✅ .specify/templates/tasks-template.md
+  - ✅ .specify/templates/commands/*.md (directory absent; no command templates to update)
+  - ✅ README.md (reviewed; already aligned with offline Streamlit artifact boundary)
+  - ✅ AGENTS.md (reviewed; no stale constitution reference)
 - Follow-up TODOs: none
 -->
 # AI Job Market Salary Prediction Constitution
@@ -29,7 +34,7 @@ protect reported performance from leakage and preserve the meaning of an unseen 
 
 ### II. Reproducible Staged Artifacts
 
-The documented 12-stage workflow MUST remain reproducible from the versioned source dataset
+The documented staged workflow MUST remain reproducible from the versioned source dataset
 and pinned project dependencies. Stochastic operations MUST use an explicit seed. Each run
 MUST emit inspectable intermediate evidence, final metrics, model metadata, and a serialized
 inference bundle whose feature schema matches serving. Data provenance MUST include the input
@@ -41,80 +46,83 @@ same change.
 
 Behavior changes MUST begin with an executable test or validation criterion that fails for
 the missing or incorrect behavior, followed by the smallest implementation that makes it
-pass. Data and model changes MUST test leakage gates, split boundaries, schemas, deterministic
-behavior, and metric calculations as applicable. Artifact or Streamlit changes MUST include
-an integration test of the producer-consumer contract. Before merge, the relevant pytest
-suite MUST pass and the documented pipeline and application entrypoints MUST be exercised in
-proportion to the change. Printed values without assertions are not sufficient evidence.
+pass. Data and model changes MUST test leakage gates, split boundaries, schemas,
+deterministic behavior, and metric calculations as applicable. Artifact or Streamlit changes
+MUST include an integration test of the producer-consumer contract. Before merge, the
+relevant pytest suite MUST pass and the documented pipeline and application entrypoints MUST
+be exercised in proportion to the change. Printed values without assertions are not
+sufficient evidence.
 
-### IV. Offline Training, Read-Only Reporting
+### IV. Offline Training, Streamlit Presentation Boundary
 
 Model fitting, tuning, and artifact generation MUST occur in the offline pipeline, never in
-the Streamlit process. Streamlit MUST load the generated bundle, metadata, and report outputs
-without mutating training data or model artifacts. Predictions MUST use the feature order,
-categories, ranges, and vocabulary recorded by the bundle metadata. Missing, incompatible,
-or corrupt artifacts MUST produce a clear actionable error rather than silent recomputation
-or fabricated defaults. This boundary keeps the reporting layer fast, auditable, and
-consistent with evaluated model behavior.
+the Streamlit process. Streamlit MUST remain a presentation and orchestration layer: it MAY
+load data, validate inputs, select approved artifacts, render charts, and display inference
+results, but it MUST NOT refit models or mutate training artifacts during interaction. Core
+business logic, data processing, model training, and inference contracts MUST live in
+importable Python modules that can be tested without launching Streamlit. Missing,
+incompatible, or corrupt artifacts MUST produce a clear actionable error rather than silent
+recomputation or fabricated defaults.
 
-### V. Honest Interpretation and Secure Defaults
+### V. Honest Interpretation and Universal Input Validation
 
 Reports and interfaces MUST distinguish descriptive correlation, fitted-model importance,
 validation performance, locked-test performance, and causal claims. No result from this
 dataset MAY be presented as causal salary economics or production fitness without external
-validation. Prediction intervals MUST state their empirical basis and limitations. Demo
-credentials MUST be identified as local-only; shared deployments MUST obtain credential
-material from secrets or environment configuration and MUST NOT commit plaintext secrets.
-User-controlled inputs and loaded artifact values MUST be validated before use.
+validation. Prediction intervals MUST state their empirical basis and limitations.
+
+Every user-controlled input MUST be validated before use, including uploaded files, sidebar
+controls, form values, URL/query parameters, credentials, selected run IDs, file paths, and
+model-prediction scenarios. Validation MUST define allowed schema, type, range, enum, size,
+path, authorization, and temporal constraints where applicable. Invalid input MUST fail
+closed with a clear user-facing message and MUST NOT trigger training, inference, file
+writes, artifact selection, or path traversal. Demo credentials MUST be identified as
+local-only; shared deployments MUST obtain credential material from secrets or environment
+configuration and MUST NOT commit plaintext secrets.
 
 ### VI. Model Evaluation Documentation
 
-Every model evaluation deliverable MUST document the complete chain from
-train–test split through final selection with traceable, artifact-backed
-evidence. The following sub-requirements are mandatory:
+Every model evaluation deliverable MUST document the complete chain from train-test split
+through final selection with traceable, artifact-backed evidence. Production code, public
+functions, pipeline stages, feature contracts, validation rules, and model artifacts MUST be
+documented with enough detail for a future maintainer to understand purpose, inputs,
+outputs, assumptions, and failure modes. The following sub-requirements are mandatory:
 
-1. **Split specification.** The temporal split identity (locked test =
-   2026-03, ~298 rows; development = pre-2026-03, ~1,201 rows) MUST be
-   stated. The split MUST be performed on the raw cleaned DataFrame, not on
-   an encoded correlation view. Preprocessing MUST be fitted inside the
-   pipeline, never before the split.
-2. **Candidate ladder.** At minimum five models (Dummy median floor, Linear
-   Regression, Ridge, Random Forest, Gradient Boosting) plus optional SVR
-   MUST be trained on identical splits. Each candidate MUST report MAE,
-   RMSE, R², and MedAE on both temporal CV folds and the locked test.
-3. **Hyperparameter tuning.** Tuning MUST be nested inside development
-   temporal folds only; the locked test MUST NOT be touched until all
-   selection decisions are frozen. Every trial MUST log parameters,
-   fold IDs, seed, and metrics.
-4. **Best model selection.** The winner (currently Random Forest,
-   locked-test R² = 0.803, MAE = 14,961 USD, MedAE = 4,467 USD) MUST be
-   selected by lowest mean temporal CV MAE before the locked test is opened.
-   When candidates overlap within fold variance, the simpler model MUST be
-   preferred.
-5. **Feature importance.** Both encoded-feature importance (from the
-   estimator) and raw-feature-family permutation importance (on the locked
-   test) MUST be reported. The concentration of job_category (~59%) and
-   years_of_experience (~28%) MUST be called out explicitly.
-6. **Interpretation caveats.** The documentation MUST state that
-   years_of_experience carries a contradictory, likely-synthetic signal;
-   that importance values are model reliance, not causal evidence; that R²
-   is a fit metric for this dataset, not a causal salary explanation; and
-   that SVM under-performance is a structural mismatch (RBF distance in
-   ~100-d sparse OHE space), not a tuning failure.
-7. **Uncertainty communication.** Every prediction summary MUST include a
-   practical interval (current 90th-percentile half-width ± 32,216 USD)
+1. **Split specification.** The temporal split identity MUST be stated. The split MUST be
+   performed on the raw cleaned DataFrame, not on an encoded correlation view.
+   Preprocessing MUST be fitted inside the pipeline, never before the split.
+2. **Candidate ladder.** At minimum five models (Dummy median floor, Linear Regression,
+   Ridge, Random Forest, Gradient Boosting) plus optional SVR MUST be trained on identical
+   splits. Each candidate MUST report MAE, RMSE, R², and MedAE on both temporal CV folds
+   and the locked test.
+3. **Hyperparameter tuning.** Tuning MUST be nested inside development temporal folds only;
+   the locked test MUST NOT be touched until all selection decisions are frozen. Every trial
+   MUST log parameters, fold IDs, seed, and metrics.
+4. **Best model selection.** The winner MUST be selected by lowest mean temporal CV MAE
+   before the locked test is opened. When candidates overlap within fold variance, the
+   simpler model MUST be preferred.
+5. **Feature importance.** Both encoded-feature importance from the estimator and
+   raw-feature-family permutation importance on the locked test MUST be reported.
+6. **Interpretation caveats.** Documentation MUST state known contradictory or
+   likely-synthetic signals, that importance values are model reliance rather than causal
+   evidence, that R² is a fit metric for this dataset, and that model under-performance must
+   be explained from evidence rather than assertion.
+7. **Uncertainty communication.** Every prediction summary MUST include a practical interval
    or MedAE rather than bare point estimates.
-8. **Artifact traceability.** Results MUST cite the specific output files
-   (`outputs/03_model_comparison/`, `outputs/04_best_model_and_feature_importance/`,
-   `artifacts/metadata.json`, `artifacts/model_bundle.joblib`) and MUST be
-   reproducible from the versioned source dataset, pinned dependencies,
-   and recorded seeds.
-9. **Visualization.** The documentation MUST embed generated charts for
-   model comparison (CV MAE bar chart, CV R² bar chart), locked-test
-   diagnostics (actual vs predicted scatter, residual plot), and feature
-   importance (encoded importance bar chart, raw permutation importance
-   bar chart). Charts MUST be referenced from the pipeline output
-   directories, not manually recreated.
+8. **Artifact traceability.** Results MUST cite the specific output files and MUST be
+   reproducible from the versioned source dataset, pinned dependencies, and recorded seeds.
+9. **Visualization.** Documentation MUST embed or reference generated charts for model
+   comparison, locked-test diagnostics, and feature importance. Charts MUST be referenced
+   from pipeline output directories, not manually recreated.
+
+### VII. Graphify-Guided, Karpathy-Simple Changes
+
+Before implementing non-trivial code changes, contributors MUST inspect the repository with
+Graphify or an existing Graphify graph to understand affected files, dependencies, and risks.
+Changes MUST follow Karpathy-style discipline: state assumptions, prefer the simplest working
+design, make surgical edits, avoid speculative abstractions, and define verifiable success
+criteria before coding. Code changes MUST update the Graphify graph or record why a scan-only
+review was sufficient.
 
 ## Scientific and Operational Constraints
 
@@ -123,36 +131,33 @@ evidence. The following sub-requirements are mandatory:
 - The source dataset is an academic snapshot with contradictory and synthetic-looking
   structure. Results are suitable for supervised-regression study and controlled scenarios,
   not unqualified labor-market decisions.
-- The five output packs, `artifacts/model_bundle.joblib`, and `artifacts/metadata.json` form a
-  published internal contract. Compatibility changes MUST be explicit and tested.
+- Output packs, saved model bundles, and metadata files form a published internal contract.
+  Compatibility changes MUST be explicit and tested.
 - Generated evidence MUST retain units, partition names, model-selection basis, and enough
   provenance for a reviewer to trace a displayed claim back to its source artifact.
-- Model evaluation documentation MUST reference the latest pipeline outputs:
-  comparison table (`09_model_comparison_temporal_cv.csv`), locked-test metrics
-  (`10_final_locked_test_metrics.csv`), encoded importance
-  (`10_encoded_feature_importance.csv`), raw permutation importance
-  (`10_raw_feature_permutation_importance.csv`), interpretation caveats
-  (`10_interpretation_caveats.json`), and tuning results
-  (`10_best_model_tuning_results.csv`). Stale or manually-typed numbers that
-  contradict these files are prohibited.
 - Runtime failures MUST identify the missing or invalid input and the command needed to
   regenerate it. Silent fallbacks that alter scientific meaning are prohibited.
 
 ## Development Workflow and Quality Gates
 
 1. Specifications MUST identify affected data boundaries, artifact contracts, scientific
-   claims, security considerations, and measurable acceptance evidence.
+   claims, user-controlled inputs, security considerations, documentation impact, and
+   measurable acceptance evidence.
 2. Plans MUST pass every Constitution Check before research and again after design. Any
    exception MUST be recorded in Complexity Tracking with the need and rejected simpler
-   alternative; exceptions cannot waive leakage safety or evidence requirements.
+   alternative; exceptions cannot waive leakage safety, input validation, or evidence
+   requirements.
 3. Tasks MUST put tests and validation before implementation, retain traceability to user
-   stories, and include documentation and graph refresh work when interfaces or code change.
-4. Reviews MUST inspect the actual diff, run relevant automated tests, and verify the exact
-   pipeline or Streamlit entrypoint affected by the change. Model-result reviews MUST cite
-   generated artifacts rather than recollection or console-only output.
-5. Code changes MUST run `graphify update .` after verification so the repository knowledge
-   graph remains synchronized. Documentation-only governance changes MAY skip the update when
-   they do not alter indexed source relationships.
+   stories, include documentation work, and include Graphify review or graph-refresh work
+   when interfaces or code change.
+4. Reviews MUST inspect the actual diff, run relevant automated tests, verify the exact
+   pipeline or Streamlit entrypoint affected by the change, and reject model fitting in UI
+   paths or unvalidated input paths. Model-result reviews MUST cite generated artifacts
+   rather than recollection or console-only output.
+5. Code changes MUST run `graphify update .` after verification unless the change records a
+   valid reason a scan-only or query-only Graphify review was sufficient. Documentation-only
+   governance changes MAY skip graph updates when they do not alter indexed source
+   relationships.
 
 ## Governance
 
@@ -171,4 +176,4 @@ acceptable only when its necessity and simpler rejected alternative are document
 commands and project-specific guidance remain in `README.md` and `AGENTS.md`, but neither may
 override this constitution.
 
-**Version**: 1.1.1 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-24
+**Version**: 1.2.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-09-17

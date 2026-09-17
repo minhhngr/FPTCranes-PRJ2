@@ -1,2 +1,0 @@
-selected_model,MAE,RMSE,R2,MedAE,selection_basis
-Random Forest,15053.501673736404,29992.769704225713,0.8011753882563938,4440.113095238063,Lowest mean temporal-CV MAE among non-dummy candidates; locked test opened once after selection/tuning.

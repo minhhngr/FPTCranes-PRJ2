@@ -1,9 +1,0 @@
-aspect,before,after
-Rows,"1,500 raw","1,499 clean"
-Features,25 raw columns,13 serving fields including skills
-Corruption,Header token present,Confirmed row removed
-Experience,Contradictory pair,experience_level quarantined; years tested by ablation
-Skills,Unique pipe-delimited strings,93 DEV-only tokens + skill_count
-Leakage,salary_min/max/tier present,Blocked from X
-Encoding,Raw categories/text,ColumnTransformer + one-hot/ordinal/RobustScaler/multi-hot
-Evaluation,No governed holdout,March-2026 locked final test

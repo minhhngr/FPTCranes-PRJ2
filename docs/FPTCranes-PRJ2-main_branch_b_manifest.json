@@ -1,0 +1,439 @@
+{
+  "archive": "FPTCranes-PRJ2-main.rar",
+  "entries": 649,
+  "branch_b_related_entries": 72,
+  "items": [
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/11_bundle_equivalence.json",
+      "size": 87,
+      "compressed_size": 87,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/feature_columns.json",
+      "size": 304,
+      "compressed_size": 180,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/metadata.json",
+      "size": 7068,
+      "compressed_size": 2436,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/model.pkl",
+      "size": 4466113,
+      "compressed_size": 728500,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/model_bundle.joblib",
+      "size": 4484131,
+      "compressed_size": 732049,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/preprocessor.pkl",
+      "size": 10166,
+      "compressed_size": 3789,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/preprocessor_ml_ready.joblib",
+      "size": 10166,
+      "compressed_size": 3789,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/reports/AI_Job_Market_Salary_Prediction_Report.docx",
+      "size": 723531,
+      "compressed_size": 721747,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/pages/_best_model.py",
+      "size": 4926,
+      "compressed_size": 1916,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/pages/_model_comparison.py",
+      "size": 3298,
+      "compressed_size": 1359,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/pages/_prediction.py",
+      "size": 5689,
+      "compressed_size": 2202,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/training/ablation_study.py",
+      "size": 3913,
+      "compressed_size": 1543,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/training/build_preprocessor.py",
+      "size": 7777,
+      "compressed_size": 2252,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/training/model_catalog.py",
+      "size": 1451,
+      "compressed_size": 548,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/training/temporal_cv.py",
+      "size": 1645,
+      "compressed_size": 671,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/training/tuning.py",
+      "size": 3680,
+      "compressed_size": 1065,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/training/__init__.py",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_feature_family_ablation.csv",
+      "size": 475,
+      "compressed_size": 342,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_feature_family_ablation.png",
+      "size": 42549,
+      "compressed_size": 35264,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_feature_importance_by_fold.csv",
+      "size": 2755,
+      "compressed_size": 1123,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_feature_importance_drift.png",
+      "size": 67667,
+      "compressed_size": 58179,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_fold_stability_mae.png",
+      "size": 109626,
+      "compressed_size": 98943,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_model_comparison_fold_metrics.csv",
+      "size": 3912,
+      "compressed_size": 1838,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_model_comparison_temporal_cv.csv",
+      "size": 1111,
+      "compressed_size": 687,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/09_model_runtime_performance.csv",
+      "size": 337,
+      "compressed_size": 248,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/model_comparison_cv_mae.png",
+      "size": 48982,
+      "compressed_size": 41443,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/model_comparison_cv_r2.png",
+      "size": 42452,
+      "compressed_size": 34900,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/model_comparison_training_time.png",
+      "size": 65697,
+      "compressed_size": 57649,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/10_best_model_tuning_results.csv",
+      "size": 300,
+      "compressed_size": 225,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/10_encoded_feature_importance.csv",
+      "size": 8867,
+      "compressed_size": 3674,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/10_error_slices.csv",
+      "size": 1644,
+      "compressed_size": 957,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/10_final_locked_test_metrics.csv",
+      "size": 243,
+      "compressed_size": 209,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/10_locked_test_predictions_with_error.csv",
+      "size": 30847,
+      "compressed_size": 6584,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/10_raw_feature_permutation_importance.csv",
+      "size": 707,
+      "compressed_size": 481,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/11_deployment_artifact_manifest.csv",
+      "size": 418,
+      "compressed_size": 273,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/actual_vs_predicted_locked_test.png",
+      "size": 102517,
+      "compressed_size": 96969,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/locked_test_residuals.png",
+      "size": 36747,
+      "compressed_size": 30657,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/raw_feature_permutation_importance.png",
+      "size": 65393,
+      "compressed_size": 55375,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/top25_encoded_feature_importance.png",
+      "size": 146672,
+      "compressed_size": 125826,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/05_salary_prediction/12_locked_test_prediction_examples.csv",
+      "size": 37100,
+      "compressed_size": 10440,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/05_salary_prediction/12_prediction_summary.csv",
+      "size": 261,
+      "compressed_size": 207,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/05_salary_prediction/salary_prediction_actual_vs_predicted.png",
+      "size": 102517,
+      "compressed_size": 96969,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/05_salary_prediction/salary_prediction_residuals.png",
+      "size": 36747,
+      "compressed_size": 30657,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/reports/AI_Job_Market_Salary_Prediction_Report.docx",
+      "size": 723531,
+      "compressed_size": 721747,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pages/_best_model.py",
+      "size": 14568,
+      "compressed_size": 4516,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pages/_model_comparison.py",
+      "size": 19938,
+      "compressed_size": 5448,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pages/_prediction.py",
+      "size": 25230,
+      "compressed_size": 7754,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pages/__pycache__/_best_model.cpython-314.pyc",
+      "size": 17188,
+      "compressed_size": 7818,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pages/__pycache__/_model_comparison.cpython-314.pyc",
+      "size": 21505,
+      "compressed_size": 9670,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pages/__pycache__/_prediction.cpython-314.pyc",
+      "size": 30112,
+      "compressed_size": 14628,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pipeline/best_model_selection_feature_importance_review.py",
+      "size": 5855,
+      "compressed_size": 1984,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pipeline/model_training_comparison.py",
+      "size": 1597,
+      "compressed_size": 684,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/pipeline/train_test_split.py",
+      "size": 2819,
+      "compressed_size": 980,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/ablation_study.py",
+      "size": 4019,
+      "compressed_size": 1536,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/build_model_pipeline.py",
+      "size": 637,
+      "compressed_size": 313,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/build_preprocessor.py",
+      "size": 7777,
+      "compressed_size": 2252,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/model_catalog.py",
+      "size": 1451,
+      "compressed_size": 548,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/temporal_cv.py",
+      "size": 1645,
+      "compressed_size": 671,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/tuning.py",
+      "size": 3680,
+      "compressed_size": 1065,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/__init__.py",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/__pycache__/build_preprocessor.cpython-314.pyc",
+      "size": 8226,
+      "compressed_size": 4229,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/__pycache__/model_catalog.cpython-314.pyc",
+      "size": 2414,
+      "compressed_size": 1396,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/__pycache__/temporal_cv.cpython-314.pyc",
+      "size": 2826,
+      "compressed_size": 1677,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/__pycache__/tuning.cpython-314.pyc",
+      "size": 4634,
+      "compressed_size": 2427,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/__pycache__/__init__.cpython-314.pyc",
+      "size": 184,
+      "compressed_size": 180,
+      "is_dir": false
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/migrate_projects/FPTCranes-PRJ2_Clean/src/training/",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": true
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/__pycache__/",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": true
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/03_model_comparison/",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": true
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/04_best_model_and_feature_importance/",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": true
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/outputs/05_salary_prediction/",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": true
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/src/training/",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": true
+    },
+    {
+      "name": "FPTCranes-PRJ2-main/artifacts/",
+      "size": 0,
+      "compressed_size": 0,
+      "is_dir": true
+    }
+  ]
+}

@@ -1,7 +1,0 @@
-artifact,purpose
-model_bundle.joblib,Full preprocessing + estimator pipeline used by Streamlit
-preprocessor.pkl,Fitted preprocessing object
-model.pkl,Final estimator fitted on preprocessed DEV features
-feature_columns.json,Exact raw serving feature contract
-metadata.json,"Category options, numeric ranges, skills, interval and limitations"
-11_bundle_equivalence.json,Reloaded-bundle numerical-equivalence gate

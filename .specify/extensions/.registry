@@ -28,10 +28,35 @@
           "speckit.git.remote",
           "speckit.git.initialize",
           "speckit.git.commit"
+        ],
+        "pi": [
+          "speckit.git.feature",
+          "speckit.git.validate",
+          "speckit.git.remote",
+          "speckit.git.initialize",
+          "speckit.git.commit"
         ]
       },
       "registered_skills": [],
-      "installed_at": "2026-08-19T14:22:31.330193+00:00"
+      "installed_at": "2026-09-17T16:19:14.976155+00:00"
+    },
+    "assess": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:6eba1ffbc264c7aa43e31b34303a8312ddad5b979772d2785c808179b402d9f2",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "pi": [
+          "speckit.assess.intake",
+          "speckit.assess.research",
+          "speckit.assess.define",
+          "speckit.assess.shape",
+          "speckit.assess.decide"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-09-17T16:51:04.267694+00:00"
     }
   }
 }

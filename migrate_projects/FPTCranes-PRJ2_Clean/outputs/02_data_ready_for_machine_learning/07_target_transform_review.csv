@@ -1,3 +1,0 @@
-target_version,skewness,mean,std,modeling_decision
-raw_usd,0.7497176841006569,193908.4096586178,66286.82878887308,Primary evaluation remains on original USD scale.
-log1p_diagnostic,0.12160960647992806,12.11910145072431,0.33381609501014714,Diagnostic only; not forced across all model families without temporal-CV evidence.

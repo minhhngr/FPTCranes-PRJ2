@@ -3,7 +3,7 @@
 **Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
 **Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
 
-**Note**: This template is filled in by the `/speckit-plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
+**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
 
 ## Summary
 
@@ -17,14 +17,14 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
+**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
 **Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
+**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]  
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
 ## Constitution Check
@@ -33,15 +33,20 @@
 
 - **Data integrity**: Declare the target, feature policy, partitions, leakage controls, and
   training-only fit boundaries. Use N/A only with a concrete reason.
-- **Reproducibility**: Identify seeds, input provenance, generated evidence, and every affected
-  artifact producer/consumer contract.
-- **Verification**: Define failing-first tests and the exact pytest, pipeline, and application
-  entrypoints that will provide acceptance evidence.
-- **Runtime boundary**: Keep training and artifact generation offline; ensure Streamlit remains
-  a read-only consumer with actionable artifact validation.
-- **Scientific and security claims**: State interpretation limits, distinguish validation from
-  locked-test evidence, and identify secrets or untrusted inputs requiring protection.
-- **Simplicity**: Record any exception below with its necessity and rejected simpler option.
+- **Reproducibility and ML evidence**: Identify seeds, input provenance, generated artifacts,
+  metrics, reports, and every affected producer/consumer contract.
+- **Verification**: Define failing-first tests and the exact pytest, pipeline, Streamlit, or
+  artifact-equivalence checks that will provide acceptance evidence.
+- **Streamlit boundary**: Confirm UI code remains presentation/orchestration only, does not
+  fit or retrain models, and core logic is testable through importable Python modules.
+- **Input validation**: List every user-controlled input and its schema, type, range, enum,
+  file/path, size, authorization, and temporal validation rules.
+- **Scientific and security claims**: State interpretation limits, distinguish validation
+  from locked-test evidence, and identify secrets or untrusted inputs requiring protection.
+- **Documentation**: Define required updates for functions, pipeline stages, validation rules,
+  model artifacts, user-facing behavior, and generated charts or reports.
+- **Graphify/Karpathy review**: Record Graphify scan/query used for dependency awareness,
+  assumptions, simplest viable approach, and success criteria.
 
 ## Project Structure
 
@@ -49,12 +54,12 @@
 
 ```text
 specs/[###-feature]/
-├── plan.md              # This file (/speckit-plan command output)
-├── research.md          # Phase 0 output (/speckit-plan command)
-├── data-model.md        # Phase 1 output (/speckit-plan command)
-├── quickstart.md        # Phase 1 output (/speckit-plan command)
-├── contracts/           # Phase 1 output (/speckit-plan command)
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
+├── plan.md              # This file (/speckit.plan command output)
+├── research.md          # Phase 0 output (/speckit.plan command)
+├── data-model.md        # Phase 1 output (/speckit.plan command)
+├── quickstart.md        # Phase 1 output (/speckit.plan command)
+├── contracts/           # Phase 1 output (/speckit.plan command)
+└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
 ### Source Code (repository root)

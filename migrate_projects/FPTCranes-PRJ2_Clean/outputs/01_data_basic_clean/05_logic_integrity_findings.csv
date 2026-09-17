@@ -1,5 +1,0 @@
-issue,affected_rows,total_rows,affected_pct,scope,action
-experience_bucket_mismatch,1113,1499,74.2494996664443,all clean rows; target-free logic,Quarantine experience_level; retain years_of_experience only through explicit ablation and cautious interpretation.
-salary_outside_min_max,490,1201,40.79933388842631,development only,Block salary_min_usd and salary_max_usd from X.
-salary_tier_mismatch,870,1201,72.43963363863448,development only,Block salary_tier from X.
-skill_rows_with_duplicate_tokens,118,1499,7.871914609739826,all clean rows; target-free logic,De-duplicate tokens within each row before multi-hot encoding.

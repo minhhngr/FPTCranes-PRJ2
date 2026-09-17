@@ -1,8 +1,8 @@
 # Feature Specification: [FEATURE NAME]
 
-**Feature Branch**: `[###-feature-name]`
-**Created**: [DATE]
-**Status**: Draft
+**Feature Branch**: `[###-feature-name]`  
+**Created**: [DATE]  
+**Status**: Draft  
 **Input**: User description: "$ARGUMENTS"
 
 ## User Scenarios & Testing *(mandatory)*
@@ -11,7 +11,7 @@
   IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
   Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
   you should still have a viable MVP (Minimum Viable Product) that delivers value.
-
+  
   Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
   Think of each story as a standalone slice of functionality that can be:
   - Developed independently
@@ -74,6 +74,8 @@
 
 - What happens when [boundary condition]?
 - How does system handle [error scenario]?
+- What happens when uploaded data, widget selections, credentials, paths, run IDs, or
+  prediction inputs are missing, malformed, out of range, too large, or unauthorized?
 
 ## Requirements *(mandatory)*
 
@@ -85,35 +87,46 @@
 ### Functional Requirements
 
 - **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
-- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]
+- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]  
 - **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
 - **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
 - **FR-005**: System MUST [behavior, e.g., "log all security events"]
+- **FR-006**: System MUST validate every user-controlled input before use and define the
+  expected error message or safe fallback for invalid input.
+- **FR-007**: System MUST keep Streamlit UI paths separate from model training and core ML
+  logic unless the feature explicitly documents an approved exception.
+- **FR-008**: System MUST document affected functions, pipeline stages, validation rules,
+  model artifacts, or user-facing behavior.
 
 *Example of marking unclear requirements:*
 
-- **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
-- **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
+- **FR-009**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
+- **FR-010**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
 
 ### Constitutional Requirements *(mandatory)*
 
 <!--
   Complete each item or explicitly mark it N/A with a reason. These requirements preserve
-  the project's scientific and operational boundaries before implementation choices begin.
+  the project's scientific, UI, validation, and operational boundaries before implementation
+  choices begin.
 -->
 
 - **Data boundary**: [Target, feature policy, temporal partitions, leakage risks, and which
   transformations are fitted on training data only]
-- **Artifact contract**: [Affected output packs, bundle/metadata schemas, producers, consumers,
-  compatibility expectations, and provenance evidence]
-- **Runtime boundary**: [How training remains offline and reporting remains a read-only artifact
-  consumer, or why this feature is not applicable]
-- **Scientific interpretation**: [Permitted claims, prohibited causal or production claims, and
-  how validation and locked-test results are labeled]
-- **Security and validation**: [Untrusted inputs, credential handling, failure behavior, and
-  required validation]
+- **Artifact contract**: [Affected output packs, bundle/metadata schemas, producers,
+  consumers, compatibility expectations, and provenance evidence]
+- **Streamlit boundary**: [How training remains offline and Streamlit remains a presentation
+  and artifact-consumer layer, or why this feature is not applicable]
+- **User input validation**: [Every uploaded file, widget, credential, path, run ID, and
+  prediction input; schema/type/range/enum/size/path/authorization/time checks; failure UI]
+- **Scientific interpretation**: [Permitted claims, prohibited causal or production claims,
+  and how validation and locked-test results are labeled]
+- **Documentation impact**: [Functions, pipeline stages, validation rules, artifacts, charts,
+  and user-facing behavior that must be documented]
 - **Verification evidence**: [Failing-first tests and exact pipeline/application workflows that
   prove acceptance]
+- **Graphify/Karpathy review**: [Graphify scan/query, assumptions, simplest viable approach,
+  and success criteria]
 
 ### Key Entities *(include if feature involves data)*
 

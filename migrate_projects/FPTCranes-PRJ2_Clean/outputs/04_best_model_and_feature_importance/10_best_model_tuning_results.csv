@@ -1,3 +1,0 @@
-candidate_id,n_estimators,min_samples_leaf,max_features,max_depth,CV_MAE_mean,CV_MAE_std
-2,100,2,0.8,,12496.705392393802,3018.31097145066
-1,80,1,0.8,,12580.765696021072,2997.7265673098623

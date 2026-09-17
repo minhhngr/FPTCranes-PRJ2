@@ -1,5 +1,0 @@
-experiment,feature_count,features,decision_question
-A0_CONSERVATIVE_CORE,10,job_title | job_category | education_required | city | country | remote_work | company_size | industry | demand_score | benefits_score_10,Reference plausibility without experience or skills.
-A1_PLUS_YEARS,11,job_title | job_category | education_required | city | country | remote_work | company_size | industry | demand_score | benefits_score_10 | years_of_experience,Does granular years materially improve temporal validation?
-A2_EXPERIENCE_BUCKET,11,job_title | job_category | education_required | city | country | remote_work | company_size | industry | demand_score | benefits_score_10 | experience_level,Does the contradictory categorical bucket add defensible signal?
-A6_SKILLS,13,job_title | job_category | education_required | city | country | remote_work | company_size | industry | demand_score | benefits_score_10 | years_of_experience | required_skills | skill_count,Do TRAIN-only multi-hot skills justify added complexity?

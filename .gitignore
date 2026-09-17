@@ -1,6 +1,13 @@
-﻿.venv/
-
+.venv/
 __pycache__/
-artifacts/
-outputs/
+.pytest_cache/
+*.pyc
+.DS_Store
+outputs/runtime_uploads/
 graphify-out/
+artifacts/
+.claude/
+.agents/
+.pi/
+.specify/
+outputs/

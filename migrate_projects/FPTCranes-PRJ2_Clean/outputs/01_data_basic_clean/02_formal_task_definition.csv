@@ -1,8 +1,0 @@
-component,definition
-Task type,Supervised regression
-Modelling unit,One AI job posting / one valid CSV row
-Target y,annual_salary_usd
-Input X,Inference-time eligible features only
-Prediction moment,Before annual salary is known/finalized
-Primary output,Predicted annual salary in USD
-Secondary output,Empirical 90% error interval + OOD/review flag + model drivers

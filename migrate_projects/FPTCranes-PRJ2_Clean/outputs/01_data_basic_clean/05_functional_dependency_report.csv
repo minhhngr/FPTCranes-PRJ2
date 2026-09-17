@@ -1,8 +1,0 @@
-source,target,source_unique,max_target_values_per_source,exact_functional_dependency
-job_title,salary_min_usd,25,1,True
-job_title,salary_max_usd,25,1,True
-job_title,demand_score,25,1,True
-is_senior,experience_level,2,2,False
-is_remote_friendly,remote_work,2,2,False
-is_llm_role,job_title,2,20,False
-city,country,20,1,True

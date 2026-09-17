@@ -1,5 +1,0 @@
-Model,R2 Score
-Model A (full features),0.848153940952114
-Model B (job_category + YoE only),0.8510484792282165
-Model C (drop job_category),0.6161135548673632
-Model D (drop years_of_experience),0.675934170506762
