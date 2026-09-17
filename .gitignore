@@ -11,3 +11,6 @@ artifacts/
 .pi/
 .specify/
 outputs/
+.ruff_cache/
+.vscode
+.flake8

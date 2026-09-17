@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SEG = ROOT / "outputs" / "03_ai_job_market_segmentation"
 
@@ -26,7 +25,9 @@ def test_subsample_stability_is_persisted_and_used_as_gate():
     assert len(runs) > 0
     assert {"algorithm", "k", "resample", "ari_vs_full_reference"}.issubset(runs.columns)
     selected = ev.loc[ev["selected"].astype(bool)].iloc[0]
-    assert float(selected["resample_stability_ari_mean"]) >= float(rationale["resample_stability_threshold"])
+    assert float(selected["resample_stability_ari_mean"]) >= float(
+        rationale["resample_stability_threshold"]
+    )
 
 
 def test_pca_cluster_space_is_distinct_from_2d_visualization():

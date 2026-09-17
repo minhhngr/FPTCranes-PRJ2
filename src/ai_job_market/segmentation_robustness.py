@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
 import math
 import warnings
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import (
     adjusted_rand_score,
     calinski_harabasz_score,
@@ -16,7 +17,6 @@ from sklearn.metrics import (
     silhouette_score,
 )
 from sklearn.mixture import GaussianMixture
-from sklearn.exceptions import ConvergenceWarning
 
 from .segmentation_stability import ResampleStabilityConfig, subsample_stability
 
@@ -126,8 +126,10 @@ def _global_representation(
     pdev_full = pca.transform(zdev_use)
     pall_full = pca.transform(zall_use)
     n = _component_count(
-        pca.explained_variance_ratio_, threshold,
-        min_components=min_components, max_components=max_components,
+        pca.explained_variance_ratio_,
+        threshold,
+        min_components=min_components,
+        max_components=max_components,
     )
     dev_matrix = pdev_full[:, :n]
     all_matrix = pall_full[:, :n]
@@ -138,16 +140,18 @@ def _global_representation(
         visual_all = np.column_stack([visual_all[:, 0], np.zeros(len(visual_all))])
 
     ratios = np.asarray(pca.explained_variance_ratio_, dtype=float)
-    comp_summary = pd.DataFrame({
-        "representation_id": representation_id,
-        "family": "GLOBAL",
-        "component_number": np.arange(1, len(ratios) + 1),
-        "component": [f"PC{i}" for i in range(1, len(ratios) + 1)],
-        "explained_variance_ratio": ratios,
-        "cumulative_variance": np.cumsum(ratios),
-        "used_for_clustering": np.arange(1, len(ratios) + 1) <= n,
-        "used_for_visualization": np.arange(1, len(ratios) + 1) <= 2,
-    })
+    comp_summary = pd.DataFrame(
+        {
+            "representation_id": representation_id,
+            "family": "GLOBAL",
+            "component_number": np.arange(1, len(ratios) + 1),
+            "component": [f"PC{i}" for i in range(1, len(ratios) + 1)],
+            "explained_variance_ratio": ratios,
+            "cumulative_variance": np.cumsum(ratios),
+            "used_for_clustering": np.arange(1, len(ratios) + 1) <= n,
+            "used_for_visualization": np.arange(1, len(ratios) + 1) <= 2,
+        }
+    )
     comp_summary["variance_threshold"] = float(threshold)
     comp_summary["retained_component_count"] = int(n)
     comp_summary["variance_target_met"] = bool(np.sum(ratios[:n]) >= float(threshold) - 1e-12)
@@ -157,16 +161,18 @@ def _global_representation(
         vals = pca.components_[pc_idx]
         order = np.argsort(np.abs(vals))[::-1][:10]
         for rank, idx in enumerate(order, 1):
-            load_rows.append({
-                "representation_id": representation_id,
-                "family": "GLOBAL",
-                "component": f"PC{pc_idx+1}",
-                "rank_within_component": rank,
-                "encoded_feature": str(kept_names[idx]),
-                "signed_loading": float(vals[idx]),
-                "absolute_loading": float(abs(vals[idx])),
-                "explained_variance_ratio": float(ratios[pc_idx]),
-            })
+            load_rows.append(
+                {
+                    "representation_id": representation_id,
+                    "family": "GLOBAL",
+                    "component": f"PC{pc_idx + 1}",
+                    "rank_within_component": rank,
+                    "encoded_feature": str(kept_names[idx]),
+                    "signed_loading": float(vals[idx]),
+                    "absolute_loading": float(abs(vals[idx])),
+                    "explained_variance_ratio": float(ratios[pc_idx]),
+                }
+            )
     loadings = pd.DataFrame(load_rows)
 
     transformer = {
@@ -244,21 +250,23 @@ def _familywise_representation(
         family_counts[fam] = int(n)
 
         for i, ratio in enumerate(ratios, 1):
-            component_rows.append({
-                "representation_id": "R1_FAMILYWISE_PCA",
-                "family": fam,
-                "component_number": i,
-                "component": f"{fam}::PC{i}",
-                "explained_variance_ratio": float(ratio),
-                "cumulative_variance": float(np.sum(ratios[:i])),
-                "used_for_clustering": bool(i <= n),
-                "used_for_visualization": bool(i <= 2),
-                "family_latent_weight": float(w),
-                "variance_threshold": float(threshold),
-                "retained_component_count": int(n),
-                "variance_target_met": bool(np.sum(ratios[:n]) >= float(threshold) - 1e-12),
-                "family_component_cap": int(cap),
-            })
+            component_rows.append(
+                {
+                    "representation_id": "R1_FAMILYWISE_PCA",
+                    "family": fam,
+                    "component_number": i,
+                    "component": f"{fam}::PC{i}",
+                    "explained_variance_ratio": float(ratio),
+                    "cumulative_variance": float(np.sum(ratios[:i])),
+                    "used_for_clustering": bool(i <= n),
+                    "used_for_visualization": bool(i <= 2),
+                    "family_latent_weight": float(w),
+                    "variance_threshold": float(threshold),
+                    "retained_component_count": int(n),
+                    "variance_target_met": bool(np.sum(ratios[:n]) >= float(threshold) - 1e-12),
+                    "family_component_cap": int(cap),
+                }
+            )
 
         fam_names = family_name_map.get(fam, [])
         if len(fam_names) != Xd.shape[1]:
@@ -267,16 +275,18 @@ def _familywise_representation(
             vals = pca.components_[pc_idx]
             order = np.argsort(np.abs(vals))[::-1][:10]
             for rank, idx in enumerate(order, 1):
-                loading_rows.append({
-                    "representation_id": "R1_FAMILYWISE_PCA",
-                    "family": fam,
-                    "component": f"{fam}::PC{pc_idx+1}",
-                    "rank_within_component": rank,
-                    "encoded_feature": str(fam_names[idx]),
-                    "signed_loading": float(vals[idx]),
-                    "absolute_loading": float(abs(vals[idx])),
-                    "explained_variance_ratio": float(ratios[pc_idx]),
-                })
+                loading_rows.append(
+                    {
+                        "representation_id": "R1_FAMILYWISE_PCA",
+                        "family": fam,
+                        "component": f"{fam}::PC{pc_idx + 1}",
+                        "rank_within_component": rank,
+                        "encoded_feature": str(fam_names[idx]),
+                        "signed_loading": float(vals[idx]),
+                        "absolute_loading": float(abs(vals[idx])),
+                        "explained_variance_ratio": float(ratios[pc_idx]),
+                    }
+                )
 
     dev_matrix = np.hstack(dev_latent)
     all_matrix = np.hstack(all_latent)
@@ -386,8 +396,7 @@ def build_representation_specs(
         X_dev=X_dev,
         X_all=X_all,
         selected_input_features=[
-            x for x in all_raw_features
-            if x not in {"job_category", "years_of_experience"}
+            x for x in all_raw_features if x not in {"job_category", "years_of_experience"}
         ],
         excluded_raw_features=["job_category", "years_of_experience"],
         excluded_encoded_substrings=[
@@ -407,7 +416,6 @@ def _pairwise_seed_stability(label_sets: list[np.ndarray]) -> float:
         for j in range(i + 1, len(label_sets)):
             vals.append(float(adjusted_rand_score(label_sets[i], label_sets[j])))
     return float(np.mean(vals)) if vals else 1.0
-
 
 
 def _fit_gmm_with_diagnostics(
@@ -433,15 +441,14 @@ def _fit_gmm_with_diagnostics(
             tol=float(tol),
         ).fit(X)
 
-    warning_seen = any(
-        issubclass(w.category, ConvergenceWarning) for w in caught
-    )
+    warning_seen = any(issubclass(w.category, ConvergenceWarning) for w in caught)
     converged = bool(getattr(model, "converged_", False)) and not warning_seen
     return model, {
         "converged": converged,
         "convergence_warning": bool(warning_seen),
         "n_iter": int(getattr(model, "n_iter_", 0)),
     }
+
 
 def evaluate_candidates(
     X_dev: np.ndarray,
@@ -515,52 +522,58 @@ def evaluate_candidates(
             db = float(davies_bouldin_score(X_dev, labels))
 
             convergence_gate = bool(main_diag["converged"]) if algorithm == "GMM" else True
-            rows.append({
-                "representation_id": representation_id,
-                "algorithm": algorithm,
-                "k": int(k),
-                "silhouette": sil,
-                "stability_ari": np.nan,
-                "stability_evaluated": False,
-                "seed_convergence_rate": np.nan,
-                "seed_convergence_gate": True if algorithm == "KMeans" else False,
-                "resample_stability_ari_mean": np.nan,
-                "resample_stability_ari_std": np.nan,
-                "resample_stability_ari_p10": np.nan,
-                "resample_stability_ari_min": np.nan,
-                "resample_stability_runs": 0,
-                "resample_stability_gate": False,
-                "resample_evaluated": False,
-                "resample_convergence_rate": np.nan,
-                "resample_convergence_gate": True if algorithm == "KMeans" else False,
-                "resample_convergence_warning_runs": 0,
-                "min_cluster_share": min_share,
-                "balance_entropy": entropy,
-                "calinski_harabasz": ch,
-                "davies_bouldin": db,
-                "inertia": inertia,
-                "gmm_bic": bic,
-                "gmm_aic": aic,
-                "gmm_converged": bool(main_diag["converged"]) if algorithm == "GMM" else True,
-                "gmm_n_iter": int(main_diag["n_iter"]),
-                "gmm_convergence_warning": bool(main_diag["convergence_warning"]) if algorithm == "GMM" else False,
-                "convergence_gate": convergence_gate,
-                "balance_gate": bool(min_share >= min_cluster_share),
-                "stability_gate": False,
-                "eligible": False,
-            })
+            rows.append(
+                {
+                    "representation_id": representation_id,
+                    "algorithm": algorithm,
+                    "k": int(k),
+                    "silhouette": sil,
+                    "stability_ari": np.nan,
+                    "stability_evaluated": False,
+                    "seed_convergence_rate": np.nan,
+                    "seed_convergence_gate": True if algorithm == "KMeans" else False,
+                    "resample_stability_ari_mean": np.nan,
+                    "resample_stability_ari_std": np.nan,
+                    "resample_stability_ari_p10": np.nan,
+                    "resample_stability_ari_min": np.nan,
+                    "resample_stability_runs": 0,
+                    "resample_stability_gate": False,
+                    "resample_evaluated": False,
+                    "resample_convergence_rate": np.nan,
+                    "resample_convergence_gate": True if algorithm == "KMeans" else False,
+                    "resample_convergence_warning_runs": 0,
+                    "min_cluster_share": min_share,
+                    "balance_entropy": entropy,
+                    "calinski_harabasz": ch,
+                    "davies_bouldin": db,
+                    "inertia": inertia,
+                    "gmm_bic": bic,
+                    "gmm_aic": aic,
+                    "gmm_converged": bool(main_diag["converged"]) if algorithm == "GMM" else True,
+                    "gmm_n_iter": int(main_diag["n_iter"]),
+                    "gmm_convergence_warning": bool(main_diag["convergence_warning"])
+                    if algorithm == "GMM"
+                    else False,
+                    "convergence_gate": convergence_gate,
+                    "balance_gate": bool(min_share >= min_cluster_share),
+                    "stability_gate": False,
+                    "eligible": False,
+                }
+            )
             models[(algorithm, k)] = main
             dev_labels_by_key[(algorithm, k)] = labels
 
             labels_all = main.predict(X_all).astype(int)
             for rid, cl in enumerate(labels_all, 1):
-                candidate_rows.append({
-                    "representation_id": representation_id,
-                    "record_id": rid,
-                    "algorithm": algorithm,
-                    "k": int(k),
-                    "cluster": int(cl),
-                })
+                candidate_rows.append(
+                    {
+                        "representation_id": representation_id,
+                        "record_id": rid,
+                        "algorithm": algorithm,
+                        "k": int(k),
+                        "cluster": int(cl),
+                    }
+                )
 
     ev = pd.DataFrame(rows)
     if ev.empty:
@@ -573,15 +586,12 @@ def evaluate_candidates(
             cand = ev[ev["algorithm"] == algorithm].sort_values("k")
         else:
             cand = ev[
-                (ev["algorithm"] == algorithm)
-                & ev["balance_gate"]
-                & ev["convergence_gate"]
+                (ev["algorithm"] == algorithm) & ev["balance_gate"] & ev["convergence_gate"]
             ].sort_values("silhouette", ascending=False)
             if cand.empty:
-                cand = ev[
-                    (ev["algorithm"] == algorithm)
-                    & ev["convergence_gate"]
-                ].sort_values("silhouette", ascending=False)
+                cand = ev[(ev["algorithm"] == algorithm) & ev["convergence_gate"]].sort_values(
+                    "silhouette", ascending=False
+                )
             if cand.empty:
                 # Preserve full evidence even if every GMM candidate failed the
                 # main-fit convergence gate; those candidates cannot be eligible.
@@ -589,7 +599,9 @@ def evaluate_candidates(
 
         attempts = 0
         for row in cand.itertuples(index=True):
-            if (not full_stability) and attempts >= max(1, int(max_stability_candidates_per_algorithm)):
+            if (not full_stability) and attempts >= max(
+                1, int(max_stability_candidates_per_algorithm)
+            ):
                 break
             attempts += 1
             key = (algorithm, int(row.k))
@@ -620,7 +632,9 @@ def evaluate_candidates(
                 label_sets.append(lab)
 
             seed_ari = _pairwise_seed_stability(label_sets)
-            seed_convergence_rate = float(np.mean(seed_convergence_flags)) if seed_convergence_flags else 1.0
+            seed_convergence_rate = (
+                float(np.mean(seed_convergence_flags)) if seed_convergence_flags else 1.0
+            )
             seed_convergence_gate = (
                 True
                 if algorithm != "GMM"
@@ -704,19 +718,27 @@ def evaluate_candidates(
     labels_dev = dev_labels_by_key[key]
     labels_all = model.predict(X_all).astype(int)
 
-    ev["selected_within_representation"] = (
-        ev["algorithm"].eq(key[0]) & ev["k"].eq(key[1])
-    )
+    ev["selected_within_representation"] = ev["algorithm"].eq(key[0]) & ev["k"].eq(key[1])
     selected_summary = {
         "representation_id": representation_id,
         "algorithm": key[0],
         "k": key[1],
         "silhouette": float(selected.silhouette),
-        "stability_ari": float(selected.stability_ari) if pd.notna(selected.stability_ari) else np.nan,
-        "seed_convergence_rate": float(selected.seed_convergence_rate) if pd.notna(selected.seed_convergence_rate) else np.nan,
-        "resample_stability_ari_mean": float(selected.resample_stability_ari_mean) if pd.notna(selected.resample_stability_ari_mean) else np.nan,
-        "resample_stability_ari_p10": float(selected.resample_stability_ari_p10) if pd.notna(selected.resample_stability_ari_p10) else np.nan,
-        "resample_convergence_rate": float(selected.resample_convergence_rate) if pd.notna(selected.resample_convergence_rate) else np.nan,
+        "stability_ari": float(selected.stability_ari)
+        if pd.notna(selected.stability_ari)
+        else np.nan,
+        "seed_convergence_rate": float(selected.seed_convergence_rate)
+        if pd.notna(selected.seed_convergence_rate)
+        else np.nan,
+        "resample_stability_ari_mean": float(selected.resample_stability_ari_mean)
+        if pd.notna(selected.resample_stability_ari_mean)
+        else np.nan,
+        "resample_stability_ari_p10": float(selected.resample_stability_ari_p10)
+        if pd.notna(selected.resample_stability_ari_p10)
+        else np.nan,
+        "resample_convergence_rate": float(selected.resample_convergence_rate)
+        if pd.notna(selected.resample_convergence_rate)
+        else np.nan,
         "gmm_converged": bool(selected.gmm_converged),
         "gmm_n_iter": int(selected.gmm_n_iter),
         "gmm_convergence_warning": bool(selected.gmm_convergence_warning),
@@ -757,7 +779,8 @@ def choose_official_representation(
     df = summary.copy()
     other_mean = (
         pairwise_ari[pairwise_ari["representation_a"] != pairwise_ari["representation_b"]]
-        .groupby("representation_a")["ari"].mean()
+        .groupby("representation_a")["ari"]
+        .mean()
         .rename("mean_cross_representation_ari")
     )
     df = df.merge(other_mean, left_on="representation_id", right_index=True, how="left")
@@ -770,7 +793,9 @@ def choose_official_representation(
         fallback = "representation_eligibility_relaxed"
 
     best_sil = float(pool["silhouette"].max())
-    pool["within_representation_tolerance"] = pool["silhouette"] >= best_sil - float(silhouette_tolerance)
+    pool["within_representation_tolerance"] = pool["silhouette"] >= best_sil - float(
+        silhouette_tolerance
+    )
     shortlist = pool[pool["within_representation_tolerance"]].copy()
     # Robustness first within a near-best separation band, then subsample
     # stability, then lower latent dimensionality / fewer raw inputs.
@@ -785,7 +810,9 @@ def choose_official_representation(
     )
     selected_id = str(shortlist.iloc[0]["representation_id"])
     df["selected_representation"] = df["representation_id"].eq(selected_id)
-    df["within_representation_tolerance"] = df["silhouette"] >= best_sil - float(silhouette_tolerance)
+    df["within_representation_tolerance"] = df["silhouette"] >= best_sil - float(
+        silhouette_tolerance
+    )
 
     def dep(base: str, ablated: str, feature: str) -> dict[str, Any]:
         q = pairwise_ari[
@@ -806,7 +833,8 @@ def choose_official_representation(
     job_dep = dep("R0_GLOBAL_PCA", "R2_NO_JOB_CATEGORY", "job_category")
     exp_dep = dep("R0_GLOBAL_PCA", "R3_NO_YEARS_EXPERIENCE", "years_of_experience")
     joint_dep = dep(
-        "R0_GLOBAL_PCA", "R4_NO_JOB_CATEGORY_NO_YEARS",
+        "R0_GLOBAL_PCA",
+        "R4_NO_JOB_CATEGORY_NO_YEARS",
         "job_category + years_of_experience",
     )
     selected_row = df[df["selected_representation"]].iloc[0]

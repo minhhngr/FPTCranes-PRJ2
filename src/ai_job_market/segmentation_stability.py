@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Any, Iterable
-import warnings
 
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import adjusted_rand_score
 from sklearn.mixture import GaussianMixture
-from sklearn.exceptions import ConvergenceWarning
 
 
 @dataclass(frozen=True)
@@ -78,9 +78,7 @@ def _fit_labels_with_diagnostics(
                 tol=float(gmm_tol),
             ).fit(X)
 
-        warning_seen = any(
-            issubclass(w.category, ConvergenceWarning) for w in caught
-        )
+        warning_seen = any(issubclass(w.category, ConvergenceWarning) for w in caught)
         converged = bool(getattr(model, "converged_", False)) and not warning_seen
         return model.predict(X).astype(int), {
             "converged": converged,
@@ -147,7 +145,9 @@ def subsample_stability(
     n_sample = max(int(np.floor(n * frac)), int(k) * 3)
     n_sample = min(n_sample, n - 1)
 
-    rng = np.random.default_rng(int(config.random_seed) + int(k) * 1009 + (0 if algorithm == "KMeans" else 500_000))
+    rng = np.random.default_rng(
+        int(config.random_seed) + int(k) * 1009 + (0 if algorithm == "KMeans" else 500_000)
+    )
     rows: list[dict[str, float | int | str | bool]] = []
     scores: list[float] = []
     convergence_flags: list[bool] = []

@@ -48,7 +48,9 @@ def test_representation_pairwise_ari_is_complete():
 
 def test_component_loadings_are_offline_evidence():
     loads = pd.read_csv(SEG / "representation_component_loadings.csv")
-    assert {"representation_id", "component", "encoded_feature", "absolute_loading"}.issubset(loads.columns)
+    assert {"representation_id", "component", "encoded_feature", "absolute_loading"}.issubset(
+        loads.columns
+    )
     assert (loads["absolute_loading"] >= 0).all()
 
 
@@ -62,7 +64,9 @@ def test_streamlit_branch_a_does_not_fit_models():
 def test_pca_sensitivity_is_persisted_as_diagnostic():
     sens = pd.read_csv(SEG / "representation_pca_sensitivity.csv")
     assert {0.80, 0.85, 0.90}.issubset(set(round(float(x), 2) for x in sens["variance_threshold"]))
-    assert {"representation_id", "family", "retained_components", "variance_retained"}.issubset(sens.columns)
+    assert {"representation_id", "family", "retained_components", "variance_retained"}.issubset(
+        sens.columns
+    )
 
 
 def test_joint_ablation_dependency_is_persisted():
@@ -72,13 +76,25 @@ def test_joint_ablation_dependency_is_persisted():
 
 def test_branch_a_canonical_input_contract_is_exactly_stage3_primary_keep_13():
     expected = [
-        "job_title", "job_category", "years_of_experience", "education_required",
-        "city", "country", "remote_work", "company_size", "industry",
-        "demand_score", "benefits_score_10", "required_skills", "skill_count",
+        "job_title",
+        "job_category",
+        "years_of_experience",
+        "education_required",
+        "city",
+        "country",
+        "remote_work",
+        "company_size",
+        "industry",
+        "demand_score",
+        "benefits_score_10",
+        "required_skills",
+        "skill_count",
     ]
     import sys
+
     sys.path.insert(0, str(ROOT / "src"))
     from ai_job_market.core import SEGMENTATION_FEATURES
+
     assert SEGMENTATION_FEATURES == expected
     assert len(SEGMENTATION_FEATURES) == 13
     blocked = {"experience_level", "ai_salary_premium_pct", "demand_growth_yoy_pct"}

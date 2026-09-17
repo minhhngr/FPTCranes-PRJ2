@@ -15,7 +15,6 @@ from .common import (
     style_page,
 )
 
-
 SEG_DIR = "03_ai_job_market_segmentation"
 
 # Branch-A output contract.  Streamlit is an evidence renderer only: it reads
@@ -189,9 +188,19 @@ def _render_representation_detail(
     c6.metric("Min cluster", _fmt_value(rep_row.get("min_cluster_share"), digits=1, pct=True))
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Raw inputs", str(int(rep_row["raw_input_count"])) if pd.notna(rep_row.get("raw_input_count")) else "—")
-    c2.metric("Latent dimensions", str(int(rep_row["latent_dimensions"])) if pd.notna(rep_row.get("latent_dimensions")) else "—")
-    c3.metric("Variance summary", _fmt_value(rep_row.get("variance_retained_summary"), digits=1, pct=True))
+    c1.metric(
+        "Raw inputs",
+        str(int(rep_row["raw_input_count"])) if pd.notna(rep_row.get("raw_input_count")) else "—",
+    )
+    c2.metric(
+        "Latent dimensions",
+        str(int(rep_row["latent_dimensions"]))
+        if pd.notna(rep_row.get("latent_dimensions"))
+        else "—",
+    )
+    c3.metric(
+        "Variance summary", _fmt_value(rep_row.get("variance_retained_summary"), digits=1, pct=True)
+    )
     c4.metric("Cross-rep ARI", _fmt_value(rep_row.get("mean_cross_representation_ari")))
 
     excluded = str(rep_row.get("excluded_features", "None"))
@@ -221,7 +230,11 @@ def _render_representation_detail(
             fig.update_traces(texttemplate="%{text:.3f}", textposition="top center")
             show_plot(st, fig, f"p3_{rep_id}_sil")
         with c2:
-            y = "resample_stability_ari_mean" if "resample_stability_ari_mean" in cm.columns else "stability_ari"
+            y = (
+                "resample_stability_ari_mean"
+                if "resample_stability_ari_mean" in cm.columns
+                else "stability_ari"
+            )
             fig = px.line(
                 cm.sort_values(["algorithm", "k"]),
                 x="k",
@@ -231,7 +244,11 @@ def _render_representation_detail(
                 text=y,
                 title=f"{rep_id} — {'subsample' if y.startswith('resample') else 'seed'} stability",
             )
-            gate = rationale.get("resample_stability_threshold" if y.startswith("resample") else "stability_threshold")
+            gate = rationale.get(
+                "resample_stability_threshold"
+                if y.startswith("resample")
+                else "stability_threshold"
+            )
             if gate is not None:
                 fig.add_hline(y=float(gate), line_dash="dash", annotation_text="gate")
             fig.update_traces(texttemplate="%{text:.3f}", textposition="top center")
@@ -256,7 +273,14 @@ def _render_representation_detail(
                 fig.update_traces(texttemplate="%{text:.1%}", textposition="top center")
                 show_plot(st, fig, f"p3_{rep_id}_balance")
         with c2:
-            support = next((x for x in ["calinski_harabasz", "davies_bouldin", "selection_score"] if x in cm.columns), None)
+            support = next(
+                (
+                    x
+                    for x in ["calinski_harabasz", "davies_bouldin", "selection_score"]
+                    if x in cm.columns
+                ),
+                None,
+            )
             if support:
                 fig = px.line(
                     cm.sort_values(["algorithm", "k"]),
@@ -273,10 +297,21 @@ def _render_representation_detail(
         show_cols = _available(
             cm,
             [
-                "representation_id", "algorithm", "k", "silhouette", "stability_ari",
-                "resample_stability_ari_mean", "resample_stability_ari_p10",
-                "min_cluster_share", "eligible", "selected_within_representation",
-                "calinski_harabasz", "davies_bouldin", "inertia", "gmm_bic", "gmm_aic",
+                "representation_id",
+                "algorithm",
+                "k",
+                "silhouette",
+                "stability_ari",
+                "resample_stability_ari_mean",
+                "resample_stability_ari_p10",
+                "min_cluster_share",
+                "eligible",
+                "selected_within_representation",
+                "calinski_harabasz",
+                "davies_bouldin",
+                "inertia",
+                "gmm_bic",
+                "gmm_aic",
             ],
         )
         downloadable_table(
@@ -295,7 +330,11 @@ def _render_representation_detail(
         pv = pv[pv["representation_id"].astype(str) == str(rep_id)].copy()
     if not pv.empty:
         st.markdown("##### PCA / latent-space evidence for this representation")
-        if "family" in pv.columns and pv["family"].notna().any() and pv["family"].astype(str).nunique() > 1:
+        if (
+            "family" in pv.columns
+            and pv["family"].notna().any()
+            and pv["family"].astype(str).nunique() > 1
+        ):
             families = sorted(pv["family"].dropna().astype(str).unique())
             fam = st.selectbox("Family PCA", families, key=f"p3_{rep_id}_family_pca")
             pv_plot = pv[pv["family"].astype(str) == fam].copy()
@@ -323,7 +362,9 @@ def _render_representation_detail(
                 yaxis_title="Variance (%)",
             )
             show_plot(st, fig, f"p3_{rep_id}_pca")
-        downloadable_table(st, pv, f"{rep_id} — PCA component evidence", f"p3_{rep_id}_pca_table", height=340)
+        downloadable_table(
+            st, pv, f"{rep_id} — PCA component evidence", f"p3_{rep_id}_pca_table", height=340
+        )
 
     # ---- Representation-specific top loadings ----
     ld = loadings_all.copy()
@@ -355,9 +396,9 @@ def _render_representation_detail(
         ra = ra[ra["representation_id"].astype(str) == str(rep_id)].copy()
     if not ra.empty:
         with st.expander(f"{rep_id} — persisted candidate assignments", expanded=False):
-            downloadable_table(st, ra, f"{rep_id} candidate assignments", f"p3_{rep_id}_assignments", height=420)
-
-
+            downloadable_table(
+                st, ra, f"{rep_id} candidate assignments", f"p3_{rep_id}_assignments", height=420
+            )
 
 
 def _render_representation_design_detail(
@@ -374,9 +415,20 @@ def _render_representation_design_detail(
         st.caption(str(purpose))
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Raw inputs", str(int(rep_row["raw_input_count"])) if pd.notna(rep_row.get("raw_input_count")) else "—")
-    c2.metric("Latent dimensions", str(int(rep_row["latent_dimensions"])) if pd.notna(rep_row.get("latent_dimensions")) else "—")
-    c3.metric("Variance retained", _fmt_value(rep_row.get("variance_retained_summary"), digits=1, pct=True))
+    c1.metric(
+        "Raw inputs",
+        str(int(rep_row["raw_input_count"])) if pd.notna(rep_row.get("raw_input_count")) else "—",
+    )
+    c2.metric(
+        "Latent dimensions",
+        str(int(rep_row["latent_dimensions"]))
+        if pd.notna(rep_row.get("latent_dimensions"))
+        else "—",
+    )
+    c3.metric(
+        "Variance retained",
+        _fmt_value(rep_row.get("variance_retained_summary"), digits=1, pct=True),
+    )
     c4.metric("Excluded fields", str(rep_row.get("excluded_features", "None")))
 
     selected_inputs = rep_row.get("selected_input_features", "")
@@ -388,13 +440,21 @@ def _render_representation_design_detail(
     if not pv.empty and "representation_id" in pv.columns:
         pv = pv[pv["representation_id"].astype(str) == str(rep_id)].copy()
     if not pv.empty:
-        if "family" in pv.columns and pv["family"].notna().any() and pv["family"].astype(str).nunique() > 1:
+        if (
+            "family" in pv.columns
+            and pv["family"].notna().any()
+            and pv["family"].astype(str).nunique() > 1
+        ):
             families = sorted(pv["family"].dropna().astype(str).unique())
             fam = st.selectbox("PCA family", families, key=f"p3_design_{rep_id}_family")
             pv_plot = pv[pv["family"].astype(str) == fam].copy()
         else:
             pv_plot = pv.copy()
-        xcol = "component_number" if "component_number" in pv_plot.columns else ("component" if "component" in pv_plot.columns else None)
+        xcol = (
+            "component_number"
+            if "component_number" in pv_plot.columns
+            else ("component" if "component" in pv_plot.columns else None)
+        )
         if xcol and "explained_variance_ratio" in pv_plot.columns:
             fig = go.Figure()
             fig.add_bar(
@@ -422,7 +482,9 @@ def _render_representation_design_detail(
     if not ld.empty and "absolute_loading" in ld.columns:
         if "component" in ld.columns:
             components = list(dict.fromkeys(ld["component"].astype(str).tolist()))
-            component = st.selectbox("Component loading", components, key=f"p3_design_{rep_id}_component")
+            component = st.selectbox(
+                "Component loading", components, key=f"p3_design_{rep_id}_component"
+            )
             ld = ld[ld["component"].astype(str) == component].copy()
         top = ld.sort_values("absolute_loading", ascending=False).head(12)
         ycol = "encoded_feature" if "encoded_feature" in top.columns else top.columns[0]
@@ -443,8 +505,6 @@ def _safe_options(df: pd.DataFrame, col: str) -> list[str]:
     if df.empty or col not in df.columns:
         return []
     return sorted(df[col].dropna().astype(str).unique().tolist())
-
-
 
 
 def _render_feature_space_option_compare(
@@ -530,7 +590,11 @@ def _render_feature_space_option_compare(
                 barmode="group",
                 text="value",
                 title="O1 vs O2 — common clustering evidence",
-                labels={"option_id": "Feature-space option", "value": "Metric", "metric": "Evidence"},
+                labels={
+                    "option_id": "Feature-space option",
+                    "value": "Metric",
+                    "metric": "Evidence",
+                },
             )
             fig.update_traces(texttemplate="%{text:.3f}", textposition="outside")
             fig.update_yaxes(range=[0, 1.05])
@@ -631,19 +695,25 @@ def _render_feature_space_option_compare(
             {
                 "option_id": str(row["option_id"]),
                 "Seed stability": int(
-                    True if seed_thr is None else (
+                    True
+                    if seed_thr is None
+                    else (
                         pd.notna(row.get("stability_ari"))
                         and float(row.get("stability_ari")) >= float(seed_thr)
                     )
                 ),
                 "Subsample stability": int(
-                    True if sub_thr is None else (
+                    True
+                    if sub_thr is None
+                    else (
                         pd.notna(row.get("resample_stability_ari_mean"))
                         and float(row.get("resample_stability_ari_mean")) >= float(sub_thr)
                     )
                 ),
                 "Cluster balance": int(
-                    True if bal_thr is None else (
+                    True
+                    if bal_thr is None
+                    else (
                         pd.notna(row.get("min_cluster_share"))
                         and float(row.get("min_cluster_share")) >= float(bal_thr)
                     )
@@ -798,9 +868,8 @@ def _render_representation_compare(
     c1, c2 = st.columns(2)
 
     with c1:
-        if (
-            not cm.empty
-            and {"representation_id", "algorithm", "k", "silhouette"}.issubset(cm.columns)
+        if not cm.empty and {"representation_id", "algorithm", "k", "silhouette"}.issubset(
+            cm.columns
         ):
             fig = px.line(
                 cm.sort_values(["representation_id", "algorithm", "k"]),
@@ -833,10 +902,7 @@ def _render_representation_compare(
             elif "stability_ari" in cm.columns:
                 stability_col = "stability_ari"
 
-        if (
-            stability_col
-            and {"representation_id", "algorithm", "k"}.issubset(cm.columns)
-        ):
+        if stability_col and {"representation_id", "algorithm", "k"}.issubset(cm.columns):
             fig = px.line(
                 cm.sort_values(["representation_id", "algorithm", "k"]),
                 x="k",
@@ -1038,15 +1104,9 @@ def _render_representation_compare(
                 if not q_selected.empty:
                     selected_candidate = q_selected.head(1)
 
-            if (
-                selected_candidate.empty
-                and not q.empty
-                and {"algorithm", "k"}.issubset(q.columns)
-            ):
+            if selected_candidate.empty and not q.empty and {"algorithm", "k"}.issubset(q.columns):
                 rr_alg = str(rr.get("algorithm", ""))
-                rr_k = pd.to_numeric(
-                    pd.Series([rr.get("k")]), errors="coerce"
-                ).iloc[0]
+                rr_k = pd.to_numeric(pd.Series([rr.get("k")]), errors="coerce").iloc[0]
                 if pd.notna(rr_k):
                     q_selected = q[
                         q["algorithm"].astype(str).eq(rr_alg)
@@ -1055,11 +1115,7 @@ def _render_representation_compare(
                     if not q_selected.empty:
                         selected_candidate = q_selected.head(1)
 
-        candidate = (
-            selected_candidate.iloc[0]
-            if not selected_candidate.empty
-            else rr
-        )
+        candidate = selected_candidate.iloc[0] if not selected_candidate.empty else rr
 
         seed_val = pd.to_numeric(
             pd.Series([candidate.get("stability_ari")]),
@@ -1084,27 +1140,19 @@ def _render_representation_compare(
         if algorithm.upper() == "GMM":
             if "convergence_pass" in candidate.index:
                 convergence_pass = bool(
-                    _truthy(
-                        pd.Series([candidate.get("convergence_pass")])
-                    ).iloc[0]
+                    _truthy(pd.Series([candidate.get("convergence_pass")])).iloc[0]
                 )
             elif "gmm_converged" in candidate.index:
                 convergence_pass = bool(
-                    _truthy(
-                        pd.Series([candidate.get("gmm_converged")])
-                    ).iloc[0]
+                    _truthy(pd.Series([candidate.get("gmm_converged")])).iloc[0]
                 )
             elif "convergence_warning" in candidate.index:
                 convergence_pass = not bool(
-                    _truthy(
-                        pd.Series([candidate.get("convergence_warning")])
-                    ).iloc[0]
+                    _truthy(pd.Series([candidate.get("convergence_warning")])).iloc[0]
                 )
 
         seed_pass = (
-            True
-            if seed_gate is None
-            else bool(pd.notna(seed_val) and seed_val >= float(seed_gate))
+            True if seed_gate is None else bool(pd.notna(seed_val) and seed_val >= float(seed_gate))
         )
         subsample_pass = (
             True
@@ -1117,9 +1165,7 @@ def _render_representation_compare(
             else bool(pd.notna(share_val) and share_val >= float(balance_gate))
         )
         near_best = bool(
-            pd.notna(sil_val)
-            and pd.notna(best_sil)
-            and sil_val >= best_sil - float(tolerance)
+            pd.notna(sil_val) and pd.notna(best_sil) and sil_val >= best_sil - float(tolerance)
         )
 
         gate_rows.append(
@@ -1157,9 +1203,7 @@ def _render_representation_compare(
                 zmax=1,
                 showscale=False,
                 hovertemplate=(
-                    "Representation=%{y}<br>"
-                    "Check=%{x}<br>"
-                    "Status=%{text}<extra></extra>"
+                    "Representation=%{y}<br>Check=%{x}<br>Status=%{text}<extra></extra>"
                 ),
             )
         )
@@ -1176,9 +1220,7 @@ def _render_representation_compare(
     if (
         pairwise_ari is not None
         and not pairwise_ari.empty
-        and {"representation_a", "representation_b", "ari"}.issubset(
-            pairwise_ari.columns
-        )
+        and {"representation_a", "representation_b", "ari"}.issubset(pairwise_ari.columns)
     ):
         st.markdown("##### 5. Cross-representation assignment agreement")
         matrix = pairwise_ari.pivot(
@@ -1187,11 +1229,7 @@ def _render_representation_compare(
             values="ari",
         )
 
-        all_ids = sorted(
-            set(matrix.index.astype(str)).union(
-                set(matrix.columns.astype(str))
-            )
-        )
+        all_ids = sorted(set(matrix.index.astype(str)).union(set(matrix.columns.astype(str))))
         matrix = matrix.reindex(index=all_ids, columns=all_ids)
 
         for rid in all_ids:
@@ -1199,11 +1237,7 @@ def _render_representation_compare(
 
         for a in all_ids:
             for b in all_ids:
-                if (
-                    pd.isna(matrix.loc[a, b])
-                    and b in matrix.index
-                    and a in matrix.columns
-                ):
+                if pd.isna(matrix.loc[a, b]) and b in matrix.index and a in matrix.columns:
                     matrix.loc[a, b] = matrix.loc[b, a]
 
         fig = px.imshow(
@@ -1230,25 +1264,19 @@ def _render_representation_compare(
         )
 
     if "resample_stability_ari_mean" in decision.columns:
-        decision["rank_subsample_stability"] = decision[
-            "resample_stability_ari_mean"
-        ].rank(
+        decision["rank_subsample_stability"] = decision["resample_stability_ari_mean"].rank(
             method="min",
             ascending=False,
         )
 
     if "mean_cross_representation_ari" in decision.columns:
-        decision["rank_cross_R_agreement"] = decision[
-            "mean_cross_representation_ari"
-        ].rank(
+        decision["rank_cross_R_agreement"] = decision["mean_cross_representation_ari"].rank(
             method="min",
             ascending=False,
         )
 
     if "latent_dimensions" in decision.columns:
-        decision["rank_parsimony"] = decision[
-            "latent_dimensions"
-        ].rank(
+        decision["rank_parsimony"] = decision["latent_dimensions"].rank(
             method="min",
             ascending=True,
         )
@@ -1256,16 +1284,12 @@ def _render_representation_compare(
     near_best_lookup = {}
     if not gate_df.empty:
         near_best_lookup = {
-            str(row["representation_id"]): bool(
-                row["Near-best separation"]
-            )
+            str(row["representation_id"]): bool(row["Near-best separation"])
             for _, row in gate_df.iterrows()
         }
 
     decision["near_best_separation"] = (
-        decision["representation_id"]
-        .map(near_best_lookup)
-        .fillna(False)
+        decision["representation_id"].map(near_best_lookup).fillna(False)
     )
 
     if "eligible" in decision.columns:
@@ -1280,11 +1304,7 @@ def _render_representation_compare(
                     and row["Subsample stability"]
                     and row["Cluster balance"]
                 )
-        eligible_flag = (
-            decision["representation_id"]
-            .map(hard_gate_lookup)
-            .fillna(False)
-        )
+        eligible_flag = decision["representation_id"].map(hard_gate_lookup).fillna(False)
 
     decision["decision_cue"] = "Secondary alternative"
 
@@ -1299,9 +1319,7 @@ def _render_representation_compare(
     ] = "Strong candidate — eligible and near-best"
 
     decision.loc[
-        decision["representation_id"].eq(
-            str(selected_representation)
-        ),
+        decision["representation_id"].eq(str(selected_representation)),
         "decision_cue",
     ] = "OFFICIAL representation"
 
@@ -1342,10 +1360,7 @@ def _render_representation_compare(
     # ------------------------------------------------------------------
     # 7. Dynamic conclusion
     # ------------------------------------------------------------------
-    selected = decision[
-        decision["representation_id"].astype(str)
-        == str(selected_representation)
-    ]
+    selected = decision[decision["representation_id"].astype(str) == str(selected_representation)]
 
     if not selected.empty:
         s = selected.iloc[0]
@@ -1388,6 +1403,7 @@ def _render_representation_compare(
             "success",
             title="R selection conclusion",
         )
+
 
 def render(st, root, role="admin"):
     style_page(st)
@@ -1438,15 +1454,23 @@ def render(st, root, role="admin"):
     with st.expander("Display filters — outputs only", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         cluster_opts = sorted(assign["cluster"].astype(int).unique().tolist())
-        clusters = c1.multiselect("Official clusters", cluster_opts, default=cluster_opts, key="p3_clusters")
-        categories = c2.multiselect("Job categories", _safe_options(assign, "job_category"), key="p3_categories")
-        countries = c3.multiselect("Countries", _safe_options(assign, "country"), key="p3_countries")
+        clusters = c1.multiselect(
+            "Official clusters", cluster_opts, default=cluster_opts, key="p3_clusters"
+        )
+        categories = c2.multiselect(
+            "Job categories", _safe_options(assign, "job_category"), key="p3_categories"
+        )
+        countries = c3.multiselect(
+            "Countries", _safe_options(assign, "country"), key="p3_countries"
+        )
         family = c4.selectbox(
             "Feature family focus",
             ["Job Domain", "Skills", "Experience", "Company", "Geography", "Demand / Benefits"],
             key="p3_family",
         )
-        st.caption("These filters change displayed evidence only; the saved clustering solution is never recalculated in the UI.")
+        st.caption(
+            "These filters change displayed evidence only; the saved clustering solution is never recalculated in the UI."
+        )
 
     focused_rows = _filter_rows(assign, clusters, categories, countries)
     if focused_rows.empty:
@@ -1476,19 +1500,33 @@ def render(st, root, role="admin"):
             "This stage verifies what information is available before any unsupervised representation is designed."
         )
 
-        selected_inputs = meta.get("representation_input_features") or meta.get("selected_input_features") or []
-        excluded = meta.get("representation_excluded_features") or meta.get("excluded_raw_features") or []
+        selected_inputs = (
+            meta.get("representation_input_features") or meta.get("selected_input_features") or []
+        )
+        excluded = (
+            meta.get("representation_excluded_features") or meta.get("excluded_raw_features") or []
+        )
 
         r0_inputs = None
-        if not rep.empty and "representation_id" in rep.columns and "selected_input_features" in rep.columns:
+        if (
+            not rep.empty
+            and "representation_id" in rep.columns
+            and "selected_input_features" in rep.columns
+        ):
             r0 = rep[rep["representation_id"].astype(str) == "R0_GLOBAL_PCA"]
             if not r0.empty:
                 r0_inputs = r0.iloc[0].get("selected_input_features")
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Records", f"{len(assign):,}")
-        c2.metric("Target used for clustering", "No" if not bool(meta.get("target_used_for_clustering", False)) else "Yes")
-        c3.metric("Selected raw inputs", len(selected_inputs) if isinstance(selected_inputs, list) else "—")
+        c2.metric(
+            "Target used for clustering",
+            "No" if not bool(meta.get("target_used_for_clustering", False)) else "Yes",
+        )
+        c3.metric(
+            "Selected raw inputs",
+            len(selected_inputs) if isinstance(selected_inputs, list) else "—",
+        )
         c4.metric("Ablation exclusions", len(excluded) if isinstance(excluded, list) else "—")
 
         st.markdown("#### Prepared feature contract before representation selection")
@@ -1496,7 +1534,9 @@ def render(st, root, role="admin"):
             st.code(str(r0_inputs), language=None)
         else:
             contract = pd.DataFrame(FAMILY_CONTRACT)
-            st.dataframe(contract[["family", "raw_fields"]], use_container_width=True, hide_index=True)
+            st.dataframe(
+                contract[["family", "raw_fields"]], use_container_width=True, hide_index=True
+            )
 
         st.markdown("#### Official feature contract after representation selection")
         st.code(str(selected_inputs), language=None)
@@ -1586,7 +1626,9 @@ def render(st, root, role="admin"):
                         text=diag["mean_row_l2_after"],
                         texttemplate="%{text:.2f}",
                     )
-                fig.update_layout(barmode="group", title="Mean row L2 norm — before vs after balancing")
+                fig.update_layout(
+                    barmode="group", title="Mean row L2 norm — before vs after balancing"
+                )
                 show_plot(st, fig, "p3_a3_l2")
 
             if {"frobenius_norm_before", "frobenius_norm_after"}.issubset(diag.columns):
@@ -1605,8 +1647,12 @@ def render(st, root, role="admin"):
                 fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
                 show_plot(st, fig, "p3_a3_frobenius")
 
-            downloadable_table(st, diag, "Family Balance Diagnostics", "p3_a3_family_balance", height=360)
-        st.success("Next → build alternative latent representations and test whether segmentation depends on dominant features.")
+            downloadable_table(
+                st, diag, "Family Balance Diagnostics", "p3_a3_family_balance", height=360
+            )
+        st.success(
+            "Next → build alternative latent representations and test whether segmentation depends on dominant features."
+        )
 
     # ------------------------------------------------------------------
     # A4 — Feature-space construction: O1 PCA vs O2 Correlation
@@ -1673,9 +1719,7 @@ def render(st, root, role="admin"):
                     rep_tabs = st.tabs(rep_ids)
                     for rt, rid in zip(rep_tabs, rep_ids):
                         with rt:
-                            rr = rep[
-                                rep["representation_id"].astype(str) == rid
-                            ].iloc[0]
+                            rr = rep[rep["representation_id"].astype(str) == rid].iloc[0]
                             _render_representation_design_detail(
                                 st,
                                 rid,
@@ -1776,9 +1820,7 @@ def render(st, root, role="admin"):
 
             if not sel.empty:
                 decision_counts = (
-                    sel.value_counts(["family", "decision"])
-                    .rename("features")
-                    .reset_index()
+                    sel.value_counts(["family", "decision"]).rename("features").reset_index()
                 )
                 fig = px.bar(
                     decision_counts,
@@ -1839,20 +1881,14 @@ def render(st, root, role="admin"):
                 else []
             )
             default_option = str(meta.get("feature_space_option_id", "O1_PCA"))
-            idx = (
-                option_choices.index(default_option)
-                if default_option in option_choices
-                else 0
-            )
+            idx = option_choices.index(default_option) if default_option in option_choices else 0
             chosen_option = st.selectbox(
                 "Feature-space option to inspect",
                 option_choices,
                 index=idx,
                 key="p3_a5_option",
             )
-            view = cm[
-                cm["option_id"].astype(str) == chosen_option
-            ].copy()
+            view = cm[cm["option_id"].astype(str) == chosen_option].copy()
 
             if "internal_representation" in view.columns:
                 internal = ", ".join(
@@ -1880,9 +1916,7 @@ def render(st, root, role="admin"):
 
             with c2:
                 support_choices = [
-                    x
-                    for x in ["calinski_harabasz", "davies_bouldin"]
-                    if x in view.columns
+                    x for x in ["calinski_harabasz", "davies_bouldin"] if x in view.columns
                 ]
                 if support_choices:
                     support = st.selectbox(
@@ -1934,11 +1968,7 @@ def render(st, root, role="admin"):
                     else pd.DataFrame()
                 )
                 gmm_metric = next(
-                    (
-                        x
-                        for x in ["gmm_bic", "gmm_aic"]
-                        if x in gm.columns
-                    ),
+                    (x for x in ["gmm_bic", "gmm_aic"] if x in gm.columns),
                     None,
                 )
                 if not gm.empty and gmm_metric:
@@ -1948,10 +1978,7 @@ def render(st, root, role="admin"):
                         y=gmm_metric,
                         markers=True,
                         text=gmm_metric,
-                        title=(
-                            f"{chosen_option} — "
-                            f"{gmm_metric.replace('gmm_', '').upper()} ↓"
-                        ),
+                        title=(f"{chosen_option} — {gmm_metric.replace('gmm_', '').upper()} ↓"),
                     )
                     fig.update_traces(
                         texttemplate="%{text:.0f}",
@@ -2013,24 +2040,16 @@ def render(st, root, role="admin"):
         if cm.empty:
             _render_missing(st, "feature_space_candidate_metrics.csv")
         else:
-            option_choices = sorted(
-                cm["option_id"].dropna().astype(str).unique().tolist()
-            )
+            option_choices = sorted(cm["option_id"].dropna().astype(str).unique().tolist())
             default_option = str(meta.get("feature_space_option_id", option_choices[0]))
-            idx = (
-                option_choices.index(default_option)
-                if default_option in option_choices
-                else 0
-            )
+            idx = option_choices.index(default_option) if default_option in option_choices else 0
             chosen_option = st.selectbox(
                 "Option for detailed robustness review",
                 option_choices,
                 index=idx,
                 key="p3_a6_option",
             )
-            view = cm[
-                cm["option_id"].astype(str) == chosen_option
-            ].copy()
+            view = cm[cm["option_id"].astype(str) == chosen_option].copy()
 
             c1, c2 = st.columns(2)
             with c1:
@@ -2106,26 +2125,14 @@ def render(st, root, role="admin"):
 
             with c2:
                 convergence_col = next(
-                    (
-                        x
-                        for x in ["convergence_pass", "gmm_converged"]
-                        if x in view.columns
-                    ),
+                    (x for x in ["convergence_pass", "gmm_converged"] if x in view.columns),
                     None,
                 )
                 if convergence_col and "algorithm" in view.columns:
-                    gm = view[
-                        view["algorithm"].astype(str) == "GMM"
-                    ].copy()
+                    gm = view[view["algorithm"].astype(str) == "GMM"].copy()
                     if not gm.empty:
-                        gm["convergence_status"] = gm[
-                            convergence_col
-                        ].map(
-                            lambda x: (
-                                "Pass"
-                                if str(x).lower() in {"true", "1", "yes"}
-                                else "Fail"
-                            )
+                        gm["convergence_status"] = gm[convergence_col].map(
+                            lambda x: "Pass" if str(x).lower() in {"true", "1", "yes"} else "Fail"
                         )
                         fig = px.bar(
                             gm.sort_values("k"),
@@ -2257,10 +2264,30 @@ def render(st, root, role="admin"):
         )
 
         gate_rows = [
-            ["Optimizer seed stability", "stability_ari", rationale.get("stability_threshold"), "≥"],
-            ["Subsample stability", "resample_stability_ari_mean", rationale.get("resample_stability_threshold"), "≥"],
-            ["Minimum cluster share", "min_cluster_share", rationale.get("minimum_cluster_share_threshold"), "≥"],
-            ["Feature-space practical tie", "silhouette gap", rationale.get("representation_silhouette_tolerance"), "≤"],
+            [
+                "Optimizer seed stability",
+                "stability_ari",
+                rationale.get("stability_threshold"),
+                "≥",
+            ],
+            [
+                "Subsample stability",
+                "resample_stability_ari_mean",
+                rationale.get("resample_stability_threshold"),
+                "≥",
+            ],
+            [
+                "Minimum cluster share",
+                "min_cluster_share",
+                rationale.get("minimum_cluster_share_threshold"),
+                "≥",
+            ],
+            [
+                "Feature-space practical tie",
+                "silhouette gap",
+                rationale.get("representation_silhouette_tolerance"),
+                "≤",
+            ],
             ["Within-option K tie", "silhouette gap", rationale.get("silhouette_tolerance"), "≤"],
         ]
         st.dataframe(
@@ -2301,11 +2328,7 @@ def render(st, root, role="admin"):
             )
 
         feature_decision = rationale.get("feature_space_decision", {})
-        runner = (
-            feature_decision.get("runner_up")
-            if isinstance(feature_decision, dict)
-            else None
-        )
+        runner = feature_decision.get("runner_up") if isinstance(feature_decision, dict) else None
         if isinstance(runner, dict) and runner:
             selected_row = (
                 option_summary[_truthy(option_summary["selected_option"])].iloc[0].to_dict()
@@ -2334,11 +2357,7 @@ def render(st, root, role="admin"):
             st.success(str(decision_note))
 
         # Official Algorithm × K candidates after the option is frozen.
-        eligible = (
-            ev[_truthy(ev["eligible"])]
-            if "eligible" in ev.columns
-            else ev.copy()
-        )
+        eligible = ev[_truthy(ev["eligible"])] if "eligible" in ev.columns else ev.copy()
         if not eligible.empty:
             elig_cols = _available(
                 eligible,
@@ -2373,24 +2392,15 @@ def render(st, root, role="admin"):
         except Exception:
             kval = int(meta.get("k", 0) or 0)
 
-        if (
-            not coords.empty
-            and {"algorithm", "k"}.issubset(coords.columns)
-        ):
+        if not coords.empty and {"algorithm", "k"}.issubset(coords.columns):
             chosen = coords[
                 (coords["algorithm"].astype(str) == selected_alg)
                 & (coords["k"].astype(int) == kval)
             ].copy()
             chosen = _filter_rows(chosen, [], categories, countries)
 
-            if (
-                not chosen.empty
-                and {"PC1", "PC2", "cluster"}.issubset(chosen.columns)
-            ):
-                chosen["cluster_label"] = (
-                    "Cluster "
-                    + chosen["cluster"].astype(int).astype(str)
-                )
+            if not chosen.empty and {"PC1", "PC2", "cluster"}.issubset(chosen.columns):
+                chosen["cluster_label"] = "Cluster " + chosen["cluster"].astype(int).astype(str)
                 c1, c2 = st.columns([2, 1])
 
                 with c1:
@@ -2463,7 +2473,15 @@ def render(st, root, role="admin"):
             "geography and post-hoc salary summaries. None of these post-hoc views is used to refit the clusters."
         )
 
-        out_tabs = st.tabs(["Cluster Labels & Map", "Cluster Profiles", "Feature-family EDA", "Market Geography", "Evidence Tables"])
+        out_tabs = st.tabs(
+            [
+                "Cluster Labels & Map",
+                "Cluster Profiles",
+                "Feature-family EDA",
+                "Market Geography",
+                "Evidence Tables",
+            ]
+        )
 
         with out_tabs[0]:
             scatter = focused_rows.copy()
@@ -2474,22 +2492,48 @@ def render(st, root, role="admin"):
                     x="PC1",
                     y="PC2",
                     color="cluster_label",
-                    hover_data=_available(scatter, ["job_title", "job_category", "country", "years_of_experience", "demand_score"]),
+                    hover_data=_available(
+                        scatter,
+                        [
+                            "job_title",
+                            "job_category",
+                            "country",
+                            "years_of_experience",
+                            "demand_score",
+                        ],
+                    ),
                     title="Official segmentation — 2D PCA display",
                 )
                 show_plot(st, fig, "p3_a8_map")
-            downloadable_table(st, focused_rows, "Filtered Official Row-level Assignments", "p3_a8_assignments", height=420)
+            downloadable_table(
+                st,
+                focused_rows,
+                "Filtered Official Row-level Assignments",
+                "p3_a8_assignments",
+                height=420,
+            )
 
         with out_tabs[1]:
-            view = prof[prof["cluster"].astype(int).isin(list(map(int, clusters)))] if clusters else prof.copy()
+            view = (
+                prof[prof["cluster"].astype(int).isin(list(map(int, clusters)))]
+                if clusters
+                else prof.copy()
+            )
             st.dataframe(view, use_container_width=True, hide_index=True)
-            profile_cols = [c for c in ["years_mean", "demand_mean", "benefits_mean", "skill_count_mean"] if c in view.columns]
+            profile_cols = [
+                c
+                for c in ["years_mean", "demand_mean", "benefits_mean", "skill_count_mean"]
+                if c in view.columns
+            ]
             if profile_cols:
                 fig = go.Figure()
                 for col in profile_cols:
                     fig.add_bar(
-                        x=view["cluster"].astype(str), y=view[col], name=col.replace("_mean", "").replace("_", " ").title(),
-                        text=view[col], texttemplate="%{text:.1f}"
+                        x=view["cluster"].astype(str),
+                        y=view[col],
+                        name=col.replace("_mean", "").replace("_", " ").title(),
+                        text=view[col],
+                        texttemplate="%{text:.1f}",
                     )
                 fig.update_layout(barmode="group", title="Numeric cluster profile")
                 show_plot(st, fig, "p3_a8_profile")
@@ -2516,13 +2560,35 @@ def render(st, root, role="admin"):
                 if categories and not d.empty:
                     d = d[d["job_category"].astype(str).isin(categories)]
                 if not d.empty:
-                    metric_options = [x for x in ["records", "salary_mean_posthoc", "demand_mean"] if x in d.columns]
+                    metric_options = [
+                        x
+                        for x in ["records", "salary_mean_posthoc", "demand_mean"]
+                        if x in d.columns
+                    ]
                     if metric_options:
-                        metric = st.radio("Job-domain view", metric_options, horizontal=True, key="p3_a8_job_metric")
-                        focus = st.multiselect("Focus job categories", sorted(d["job_category"].astype(str).unique()), key="p3_a8_job_focus")
+                        metric = st.radio(
+                            "Job-domain view",
+                            metric_options,
+                            horizontal=True,
+                            key="p3_a8_job_metric",
+                        )
+                        focus = st.multiselect(
+                            "Focus job categories",
+                            sorted(d["job_category"].astype(str).unique()),
+                            key="p3_a8_job_focus",
+                        )
                         if focus:
                             d = d[d["job_category"].astype(str).isin(focus)]
-                        fig = px.bar(d, x="job_category", y=metric, color=d["cluster"].astype(str), barmode="group", text=metric, title="Job-domain profile by cluster", labels={"color": "Cluster"})
+                        fig = px.bar(
+                            d,
+                            x="job_category",
+                            y=metric,
+                            color=d["cluster"].astype(str),
+                            barmode="group",
+                            text=metric,
+                            title="Job-domain profile by cluster",
+                            labels={"color": "Cluster"},
+                        )
 
             elif family == "Skills":
                 d = e["cluster_skill_profile"].copy()
@@ -2531,59 +2597,139 @@ def render(st, root, role="admin"):
                 if not d.empty:
                     topn = st.slider("Top skill rows", 10, 50, 20, key="p3_a8_skill_topn")
                     d = d.sort_values("records", ascending=False).head(topn)
-                    fig = px.bar(d, x="skill", y="records", color=d["cluster"].astype(str), barmode="group", text="records", title="Normalized skill frequency by cluster", labels={"color": "Cluster"})
+                    fig = px.bar(
+                        d,
+                        x="skill",
+                        y="records",
+                        color=d["cluster"].astype(str),
+                        barmode="group",
+                        text="records",
+                        title="Normalized skill frequency by cluster",
+                        labels={"color": "Cluster"},
+                    )
 
             elif family == "Experience":
-                mode = st.radio("Experience chart", ["Years distribution", "Experience-level salary"], horizontal=True, key="p3_a8_exp_mode")
+                mode = st.radio(
+                    "Experience chart",
+                    ["Years distribution", "Experience-level salary"],
+                    horizontal=True,
+                    key="p3_a8_exp_mode",
+                )
                 if mode == "Years distribution":
                     d = e["cluster_years_distribution"].copy()
                     if clusters and not d.empty:
                         d = d[d["cluster"].astype(int).isin(list(map(int, clusters)))]
                     if not d.empty:
-                        fig = px.bar(d, x="years_of_experience", y="records", color=d["cluster"].astype(str), barmode="group", text="records", title="Years-of-experience distribution", labels={"color": "Cluster"})
+                        fig = px.bar(
+                            d,
+                            x="years_of_experience",
+                            y="records",
+                            color=d["cluster"].astype(str),
+                            barmode="group",
+                            text="records",
+                            title="Years-of-experience distribution",
+                            labels={"color": "Cluster"},
+                        )
                 else:
                     d = e["cluster_experience_level_profile"].copy()
                     if clusters and not d.empty:
                         d = d[d["cluster"].astype(int).isin(list(map(int, clusters)))]
                     if not d.empty and "salary_mean_posthoc" in d.columns:
-                        fig = px.bar(d, x="experience_level", y="salary_mean_posthoc", color=d["cluster"].astype(str), barmode="group", text="salary_mean_posthoc", title="Post-hoc salary by experience level and cluster", labels={"color": "Cluster"})
+                        fig = px.bar(
+                            d,
+                            x="experience_level",
+                            y="salary_mean_posthoc",
+                            color=d["cluster"].astype(str),
+                            barmode="group",
+                            text="salary_mean_posthoc",
+                            title="Post-hoc salary by experience level and cluster",
+                            labels={"color": "Cluster"},
+                        )
                         fig.update_traces(texttemplate="$%{text:,.0f}")
 
             elif family == "Company":
                 d = e["cluster_company_profile"].copy()
                 if not d.empty and "feature" in d.columns:
-                    options = [x for x in ["company_size", "industry", "remote_work"] if x in d["feature"].astype(str).unique()]
+                    options = [
+                        x
+                        for x in ["company_size", "industry", "remote_work"]
+                        if x in d["feature"].astype(str).unique()
+                    ]
                     if options:
-                        feature = st.selectbox("Company feature", options, key="p3_a8_company_feature")
+                        feature = st.selectbox(
+                            "Company feature", options, key="p3_a8_company_feature"
+                        )
                         d = d[d["feature"] == feature].copy()
                         if clusters:
                             d = d[d["cluster"].astype(int).isin(list(map(int, clusters)))]
-                        focus = st.multiselect("Focus categories", sorted(d["category"].astype(str).unique()), key="p3_a8_company_focus")
+                        focus = st.multiselect(
+                            "Focus categories",
+                            sorted(d["category"].astype(str).unique()),
+                            key="p3_a8_company_focus",
+                        )
                         if focus:
                             d = d[d["category"].astype(str).isin(focus)]
-                        fig = px.bar(d, x="category", y="records", color=d["cluster"].astype(str), barmode="group", text="records", title=f"{feature.replace('_', ' ')} profile", labels={"color": "Cluster"})
+                        fig = px.bar(
+                            d,
+                            x="category",
+                            y="records",
+                            color=d["cluster"].astype(str),
+                            barmode="group",
+                            text="records",
+                            title=f"{feature.replace('_', ' ')} profile",
+                            labels={"color": "Cluster"},
+                        )
 
             elif family == "Geography":
                 d = e["cluster_geography_profile"].copy()
                 if not d.empty and "geo_level" in d.columns:
-                    options = [x for x in ["country", "city"] if x in d["geo_level"].astype(str).unique()]
+                    options = [
+                        x for x in ["country", "city"] if x in d["geo_level"].astype(str).unique()
+                    ]
                     if options:
                         level = st.selectbox("Geography level", options, key="p3_a8_geo_level")
                         d = d[d["geo_level"] == level].copy()
                         if clusters:
                             d = d[d["cluster"].astype(int).isin(list(map(int, clusters)))]
                         d = d.sort_values("records", ascending=False).head(30)
-                        fig = px.bar(d, x="category", y="records", color=d["cluster"].astype(str), barmode="group", text="records", title=f"{level.title()} profile by cluster", labels={"color": "Cluster"})
+                        fig = px.bar(
+                            d,
+                            x="category",
+                            y="records",
+                            color=d["cluster"].astype(str),
+                            barmode="group",
+                            text="records",
+                            title=f"{level.title()} profile by cluster",
+                            labels={"color": "Cluster"},
+                        )
 
             else:
                 d = e["cluster_market_signal_values"].copy()
                 if not d.empty:
-                    market_options = [x for x in ["demand_score", "demand_growth_yoy_pct", "benefits_score_10", "ai_salary_premium_pct"] if x in d.columns]
+                    market_options = [
+                        x
+                        for x in [
+                            "demand_score",
+                            "demand_growth_yoy_pct",
+                            "benefits_score_10",
+                            "ai_salary_premium_pct",
+                        ]
+                        if x in d.columns
+                    ]
                     if market_options:
-                        market_metric = st.selectbox("Market signal", market_options, key="p3_a8_market_metric")
+                        market_metric = st.selectbox(
+                            "Market signal", market_options, key="p3_a8_market_metric"
+                        )
                         d = _filter_rows(d, clusters, categories, countries)
                         if not d.empty:
-                            fig = px.box(d, x=d["cluster"].astype(str), y=market_metric, points="outliers", title=f"{market_metric.replace('_', ' ')} by cluster", labels={"x": "Cluster"})
+                            fig = px.box(
+                                d,
+                                x=d["cluster"].astype(str),
+                                y=market_metric,
+                                points="outliers",
+                                title=f"{market_metric.replace('_', ' ')} by cluster",
+                                labels={"x": "Cluster"},
+                            )
 
             if fig is not None:
                 show_plot(st, fig, "p3_a8_family_chart")
@@ -2606,7 +2752,9 @@ def render(st, root, role="admin"):
                     size="records",
                     color="cluster_label",
                     hover_name="country",
-                    hover_data={"salary_mean_posthoc": ":,.0f", "records": True} if "salary_mean_posthoc" in geo.columns else {"records": True},
+                    hover_data={"salary_mean_posthoc": ":,.0f", "records": True}
+                    if "salary_mean_posthoc" in geo.columns
+                    else {"records": True},
                     projection="natural earth",
                     title="Country-level segment footprint",
                 )
@@ -2628,8 +2776,13 @@ def render(st, root, role="admin"):
                     color=city["cluster"].astype(str),
                     text="city",
                     hover_data=["country"],
-                    title="City market view — posting volume vs post-hoc mean salary" if ycol == "salary_mean_posthoc" else "City market view — posting volume",
-                    labels={"color": "Cluster", ycol: "Mean salary (USD)" if ycol == "salary_mean_posthoc" else "Records"},
+                    title="City market view — posting volume vs post-hoc mean salary"
+                    if ycol == "salary_mean_posthoc"
+                    else "City market view — posting volume",
+                    labels={
+                        "color": "Cluster",
+                        ycol: "Mean salary (USD)" if ycol == "salary_mean_posthoc" else "Records",
+                    },
                 )
                 fig.update_traces(textposition="top center")
                 show_plot(st, fig, "p3_a8_city_scatter")
@@ -2638,26 +2791,96 @@ def render(st, root, role="admin"):
         with out_tabs[4]:
             st.caption("Raw persisted evidence for auditability and reproducibility.")
             table_specs = [
-                ("feature_space_option_summary", "Feature-space Option Summary — O1 vs O2", "p3_a8_option_summary", 360),
-                ("feature_space_candidate_metrics", "Feature-space Candidate Metrics — O1/O2 × algorithm × K", "p3_a8_option_metrics", 480),
+                (
+                    "feature_space_option_summary",
+                    "Feature-space Option Summary — O1 vs O2",
+                    "p3_a8_option_summary",
+                    360,
+                ),
+                (
+                    "feature_space_candidate_metrics",
+                    "Feature-space Candidate Metrics — O1/O2 × algorithm × K",
+                    "p3_a8_option_metrics",
+                    480,
+                ),
                 ("feature_space_pairwise_ari", "O1 vs O2 Pairwise ARI", "p3_a8_option_ari", 260),
-                ("correlation_feature_selection", "O2 Correlation Feature Selection", "p3_a8_o2_selection", 480),
+                (
+                    "correlation_feature_selection",
+                    "O2 Correlation Feature Selection",
+                    "p3_a8_o2_selection",
+                    480,
+                ),
                 ("correlation_redundancy_pairs", "O2 Redundancy Pairs", "p3_a8_o2_pairs", 480),
                 ("correlation_family_summary", "O2 Retention by Family", "p3_a8_o2_family", 320),
-                ("representation_summary", "O1 Representation Summary — R0 to R4", "p3_a8_ev_rep_summary", 360),
-                ("representation_candidate_metrics", "Representation Candidate Metrics — all R × algorithm × K", "p3_a8_ev_rep_metrics", 480),
-                ("representation_pairwise_ari", "Representation Pairwise ARI", "p3_a8_ev_rep_ari", 320),
-                ("representation_pca_variance", "Representation PCA / Component Variance", "p3_a8_ev_rep_pca", 480),
-                ("representation_top_loadings", "Representation Top Loadings", "p3_a8_ev_rep_loadings", 480),
-                ("representation_resample_stability_runs", "Representation Resample Stability Runs", "p3_a8_ev_rep_resample", 480),
-                ("feature_dependency_summary", "Feature Dependency Summary", "p3_a8_ev_dependency", 300),
+                (
+                    "representation_summary",
+                    "O1 Representation Summary — R0 to R4",
+                    "p3_a8_ev_rep_summary",
+                    360,
+                ),
+                (
+                    "representation_candidate_metrics",
+                    "Representation Candidate Metrics — all R × algorithm × K",
+                    "p3_a8_ev_rep_metrics",
+                    480,
+                ),
+                (
+                    "representation_pairwise_ari",
+                    "Representation Pairwise ARI",
+                    "p3_a8_ev_rep_ari",
+                    320,
+                ),
+                (
+                    "representation_pca_variance",
+                    "Representation PCA / Component Variance",
+                    "p3_a8_ev_rep_pca",
+                    480,
+                ),
+                (
+                    "representation_top_loadings",
+                    "Representation Top Loadings",
+                    "p3_a8_ev_rep_loadings",
+                    480,
+                ),
+                (
+                    "representation_resample_stability_runs",
+                    "Representation Resample Stability Runs",
+                    "p3_a8_ev_rep_resample",
+                    480,
+                ),
+                (
+                    "feature_dependency_summary",
+                    "Feature Dependency Summary",
+                    "p3_a8_ev_dependency",
+                    300,
+                ),
                 ("cluster_evaluation", "Official Cluster Candidate Evaluation", "p3_a8_eval", 440),
-                ("resample_stability_runs", "Official Subsample Stability Runs", "p3_a8_resample_runs", 420),
+                (
+                    "resample_stability_runs",
+                    "Official Subsample Stability Runs",
+                    "p3_a8_resample_runs",
+                    420,
+                ),
                 ("pca_variance", "Selected PCA Variance Contract", "p3_a8_pca_variance", 420),
-                ("family_balance_diagnostics", "Family Balance Diagnostics", "p3_a8_family_balance", 360),
+                (
+                    "family_balance_diagnostics",
+                    "Family Balance Diagnostics",
+                    "p3_a8_family_balance",
+                    360,
+                ),
                 ("cluster_profiles", "Official Cluster Profiles", "p3_a8_profiles", 360),
-                ("candidate_cluster_balance", "Candidate Cluster Balance", "p3_a8_candidate_balance", 420),
-                ("candidate_cluster_coordinates", "Candidate Cluster Coordinates", "p3_a8_candidate_coords", 480),
+                (
+                    "candidate_cluster_balance",
+                    "Candidate Cluster Balance",
+                    "p3_a8_candidate_balance",
+                    420,
+                ),
+                (
+                    "candidate_cluster_coordinates",
+                    "Candidate Cluster Coordinates",
+                    "p3_a8_candidate_coords",
+                    480,
+                ),
                 ("cluster_skill_profile", "Offline Skill Profile", "p3_a8_skills", 450),
             ]
             for key, title, dl_key, height in table_specs:

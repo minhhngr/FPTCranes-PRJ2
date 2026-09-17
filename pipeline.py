@@ -34,15 +34,13 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
 
 import pandas as pd
-
-import src.ai_job_market.core as core
-
+from src.ai_job_market import core
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA = PROJECT_ROOT / "data" / "raw" / "ai_jobs_market_2025_2026.csv"
@@ -51,6 +49,7 @@ DEFAULT_DATA = PROJECT_ROOT / "data" / "raw" / "ai_jobs_market_2025_2026.csv"
 # ---------------------------------------------------------------------------
 # Small terminal helpers
 # ---------------------------------------------------------------------------
+
 
 def _supports_color() -> bool:
     if os.getenv("NO_COLOR"):
@@ -157,15 +156,15 @@ def _pct(x, digits: int = 1, default: str = "—") -> str:
 # Stage summaries
 # ---------------------------------------------------------------------------
 
-def _summary_ingestion(ctx: "RunContext") -> str:
+
+def _summary_ingestion(ctx: RunContext) -> str:
     df = ctx.raw_preview
     if df is None or df.empty:
         return "Raw CSV loaded."
     period = ""
     if {"posting_year", "posting_month"}.issubset(df.columns):
-        ym = (
-            pd.to_numeric(df["posting_year"], errors="coerce") * 100
-            + pd.to_numeric(df["posting_month"], errors="coerce")
+        ym = pd.to_numeric(df["posting_year"], errors="coerce") * 100 + pd.to_numeric(
+            df["posting_month"], errors="coerce"
         )
         if ym.notna().any():
             lo, hi = int(ym.min()), int(ym.max())
@@ -173,7 +172,7 @@ def _summary_ingestion(ctx: "RunContext") -> str:
     return f"Raw data: {len(df):,} rows × {df.shape[1]} columns{period}"
 
 
-def _summary_basic_clean(ctx: "RunContext") -> str:
+def _summary_basic_clean(ctx: RunContext) -> str:
     a = _read_json(ctx.root / "outputs/01_data_basic_clean/basic_clean_audit.json")
     if not a:
         return "Basic-clean artifacts written."
@@ -188,7 +187,7 @@ def _summary_basic_clean(ctx: "RunContext") -> str:
     )
 
 
-def _summary_quality(ctx: "RunContext") -> str:
+def _summary_quality(ctx: RunContext) -> str:
     q = _read_csv(ctx.root / "outputs/01_data_basic_clean/contradiction_summary.csv")
     if q.empty:
         return "Data-quality and contradiction evidence written."
@@ -199,7 +198,7 @@ def _summary_quality(ctx: "RunContext") -> str:
     )
 
 
-def _summary_feature_governance(ctx: "RunContext") -> str:
+def _summary_feature_governance(ctx: RunContext) -> str:
     p = _read_csv(ctx.root / "outputs/02_data_ready_for_ml/feature_policy.csv")
     if p.empty or "policy" not in p.columns:
         return "Feature-governance policy persisted."
@@ -210,7 +209,7 @@ def _summary_feature_governance(ctx: "RunContext") -> str:
     return f"Feature policy: ALLOW={allow} | BLOCK={block} | TARGET={target}"
 
 
-def _summary_shared_base(ctx: "RunContext") -> str:
+def _summary_shared_base(ctx: RunContext) -> str:
     p = ctx.root / "outputs/02_data_ready_for_ml/shared_prepared_feature_base.csv"
     d = _read_csv(p)
     if d.empty:
@@ -221,7 +220,7 @@ def _summary_shared_base(ctx: "RunContext") -> str:
     return f"Prepared base: {len(d):,} rows × {d.shape[1]} columns{skill_msg}"
 
 
-def _summary_b123(ctx: "RunContext") -> str:
+def _summary_b123(ctx: RunContext) -> str:
     split = _read_json(ctx.root / "outputs/02_data_ready_for_ml/temporal_split_summary.json")
     prep = _read_json(ctx.root / "outputs/02_data_ready_for_ml/preprocessing_contract.json")
     dev = split.get("development_rows", "—")
@@ -235,7 +234,7 @@ def _summary_b123(ctx: "RunContext") -> str:
     )
 
 
-def _summary_branch_a(ctx: "RunContext") -> str:
+def _summary_branch_a(ctx: RunContext) -> str:
     meta = _read_json(ctx.root / "outputs/03_ai_job_market_segmentation/segmentation_metadata.json")
     rat = _read_json(ctx.root / "outputs/03_ai_job_market_segmentation/k_selection_rationale.json")
     rep = (
@@ -262,7 +261,7 @@ def _summary_branch_a(ctx: "RunContext") -> str:
     return msg
 
 
-def _summary_b4(ctx: "RunContext") -> str:
+def _summary_b4(ctx: RunContext) -> str:
     m = _read_csv(ctx.root / "outputs/04_model_comparison/09_model_comparison_temporal_cv.csv")
     if m.empty:
         m = _read_csv(ctx.root / "outputs/04_model_comparison/model_comparison.csv")
@@ -276,7 +275,7 @@ def _summary_b4(ctx: "RunContext") -> str:
     )
 
 
-def _summary_b56(ctx: "RunContext") -> str:
+def _summary_b56(ctx: RunContext) -> str:
     met = _read_json(ctx.root / "outputs/05_best_model/locked_test_metrics.json")
     if not met:
         d = _read_csv(ctx.root / "outputs/05_best_model/10_final_locked_test_metrics.csv")
@@ -291,7 +290,7 @@ def _summary_b56(ctx: "RunContext") -> str:
     )
 
 
-def _summary_b7(ctx: "RunContext") -> str:
+def _summary_b7(ctx: RunContext) -> str:
     eq = _read_json(ctx.root / "outputs/06_salary_prediction/serialization_check.json")
     pred = _read_csv(ctx.root / "outputs/06_salary_prediction/12_prediction_summary.csv")
     eq_pass = eq.get("passed", "—")
@@ -305,7 +304,7 @@ def _summary_b7(ctx: "RunContext") -> str:
     )
 
 
-def _summary_integrated(ctx: "RunContext") -> str:
+def _summary_integrated(ctx: RunContext) -> str:
     seg = _read_csv(ctx.root / "outputs/07_integrated_insight/segment_salary_summary.csv")
     pred = _read_csv(ctx.root / "outputs/07_integrated_insight/predicted_salary_by_segment.csv")
     clusters = int(seg["cluster"].nunique()) if not seg.empty and "cluster" in seg.columns else "—"
@@ -314,7 +313,7 @@ def _summary_integrated(ctx: "RunContext") -> str:
     return f"Integrated insight: clusters={clusters} | profiled rows={rows} | locked prediction rows={pred_rows}"
 
 
-def _summary_final(ctx: "RunContext") -> str:
+def _summary_final(ctx: RunContext) -> str:
     p = _read_csv(ctx.root / "outputs/08_full_pipeline/pipeline_status.csv")
     if p.empty:
         return "Run summary written."
@@ -327,14 +326,14 @@ class StageSpec:
     code: str
     title: str
     marker_suffix: str
-    summary: Callable[["RunContext"], str]
+    summary: Callable[[RunContext], str]
 
 
 @dataclass
 class RunContext:
     root: Path
     raw_path: Path
-    raw_preview: Optional[pd.DataFrame] = None
+    raw_preview: pd.DataFrame | None = None
 
 
 STAGES = [
@@ -431,10 +430,10 @@ class TerminalProgress:
         self.records: list[dict] = []
         self._lock = threading.RLock()
         self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
     @property
-    def current(self) -> Optional[StageSpec]:
+    def current(self) -> StageSpec | None:
         if 0 <= self.index < len(self.stages):
             return self.stages[self.index]
         return None
@@ -620,11 +619,17 @@ def _preflight(raw_path: Path) -> pd.DataFrame:
     )
     if warnings:
         for item in warnings[:5]:
-            print(_yellow(f"            WARNING [{item.get('field')}]: {item.get('message')}"), flush=True)
+            print(
+                _yellow(f"            WARNING [{item.get('field')}]: {item.get('message')}"),
+                flush=True,
+            )
 
     if errors:
         for item in errors:
-            print(_red(f"            ERROR   [{item.get('field')}]: {item.get('message')}"), flush=True)
+            print(
+                _red(f"            ERROR   [{item.get('field')}]: {item.get('message')}"),
+                flush=True,
+            )
         raise ValueError("Input schema failed preflight validation.")
 
     print(
@@ -695,10 +700,7 @@ def _print_final_summary(summary: dict, progress: TerminalProgress, total_second
         f"| MedAE={_money(met.get('MedAE'))}"
     )
     print(f" Total elapsed      : {_fmt_elapsed(total_seconds)}")
-    print(
-        " Timing evidence    : "
-        "outputs/08_full_pipeline/pipeline_terminal_timing.csv"
-    )
+    print(" Timing evidence    : outputs/08_full_pipeline/pipeline_terminal_timing.csv")
     print(_green(_hr("═")), flush=True)
 
 

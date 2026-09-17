@@ -39,28 +39,58 @@ from sklearn.mixture import GaussianMixture
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from .segmentation_stability import ResampleStabilityConfig, subsample_stability
 from .segmentation_evidence import build_segmentation_evidence, build_segmentation_insights
 from .segmentation_robustness import (
     build_representation_specs,
+    choose_official_representation,
     evaluate_candidates,
     pairwise_representation_ari,
-    choose_official_representation,
     transform_representation,
 )
+from .segmentation_stability import ResampleStabilityConfig, subsample_stability
 
 TARGET = "annual_salary_usd"
 SOURCE_COLUMNS = [
-    "job_id", "job_title", "AI Engineering", "experience_level", "years_of_experience",
-    "education_required", "annual_salary_usd", "salary_min_usd", "salary_max_usd", "city",
-    "country", "remote_work", "company_size", "industry", "required_skills",
-    "ai_salary_premium_pct", "demand_score", "demand_growth_yoy_pct", "benefits_score_10",
-    "posting_year", "posting_month", "is_senior", "is_remote_friendly", "is_llm_role", "salary_tier",
+    "job_id",
+    "job_title",
+    "AI Engineering",
+    "experience_level",
+    "years_of_experience",
+    "education_required",
+    "annual_salary_usd",
+    "salary_min_usd",
+    "salary_max_usd",
+    "city",
+    "country",
+    "remote_work",
+    "company_size",
+    "industry",
+    "required_skills",
+    "ai_salary_premium_pct",
+    "demand_score",
+    "demand_growth_yoy_pct",
+    "benefits_score_10",
+    "posting_year",
+    "posting_month",
+    "is_senior",
+    "is_remote_friendly",
+    "is_llm_role",
+    "salary_tier",
 ]
 MODEL_FEATURES = [
-    "job_title", "job_category", "years_of_experience", "education_required", "city", "country",
-    "remote_work", "company_size", "industry", "demand_score", "benefits_score_10",
-    "required_skills", "skill_count",
+    "job_title",
+    "job_category",
+    "years_of_experience",
+    "education_required",
+    "city",
+    "country",
+    "remote_work",
+    "company_size",
+    "industry",
+    "demand_score",
+    "benefits_score_10",
+    "required_skills",
+    "skill_count",
 ]
 # Canonical Branch-A input contract.
 # Exactly the 13 fields retained by Stage 3 / Feature Governance:
@@ -114,11 +144,16 @@ def save_json(obj: Any, path: Path) -> None:
 
 
 def _json_default(x: Any) -> Any:
-    if isinstance(x, (np.integer,)): return int(x)
-    if isinstance(x, (np.floating,)): return float(x)
-    if isinstance(x, (np.ndarray,)): return x.tolist()
-    if isinstance(x, Path): return str(x)
-    if isinstance(x, pd.Timestamp): return x.isoformat()
+    if isinstance(x, (np.integer,)):
+        return int(x)
+    if isinstance(x, (np.floating,)):
+        return float(x)
+    if isinstance(x, (np.ndarray,)):
+        return x.tolist()
+    if isinstance(x, Path):
+        return str(x)
+    if isinstance(x, pd.Timestamp):
+        return x.isoformat()
     raise TypeError(type(x).__name__)
 
 
@@ -167,57 +202,146 @@ def validate_input_schema(df: pd.DataFrame) -> dict[str, Any]:
     extra = [c for c in original_cols if c not in SOURCE_COLUMNS and c != "job_category"]
     issues: list[dict[str, Any]] = []
     for c in missing:
-        issues.append({"level": "ERROR", "field": c, "message": "Required source column is missing."})
+        issues.append(
+            {"level": "ERROR", "field": c, "message": "Required source column is missing."}
+        )
     if alias_used:
-        issues.append({"level": "INFO", "field": "job_category", "message": "Accepted alias for raw column 'AI Engineering'."})
+        issues.append(
+            {
+                "level": "INFO",
+                "field": "job_category",
+                "message": "Accepted alias for raw column 'AI Engineering'.",
+            }
+        )
     for c in extra:
-        issues.append({"level": "WARNING", "field": c, "message": "Extra column will be ignored by the canonical source contract."})
+        issues.append(
+            {
+                "level": "WARNING",
+                "field": c,
+                "message": "Extra column will be ignored by the canonical source contract.",
+            }
+        )
 
-    field_rows=[]
+    field_rows = []
     for c in expected:
-        detected = c in df.columns or (c=="AI Engineering" and alias_used)
-        src = c if c in df.columns else ("job_category" if c=="AI Engineering" and alias_used else None)
+        detected = c in df.columns or (c == "AI Engineering" and alias_used)
+        src = (
+            c
+            if c in df.columns
+            else ("job_category" if c == "AI Engineering" and alias_used else None)
+        )
         dtype = str(df[src].dtype) if src else ""
         miss = int(df[src].isna().sum()) if src else None
         unique = int(df[src].nunique(dropna=True)) if src else None
-        field_rows.append({"expected_column":c,"detected":detected,"source_column":src or "","dtype":dtype,"missing":miss,"unique":unique})
+        field_rows.append(
+            {
+                "expected_column": c,
+                "detected": detected,
+                "source_column": src or "",
+                "dtype": dtype,
+                "missing": miss,
+                "unique": unique,
+            }
+        )
     field_table = pd.DataFrame(field_rows)
 
     if not missing:
-        work = df.rename(columns={"job_category":"AI Engineering"} if alias_used else {}).copy()
+        work = df.rename(columns={"job_category": "AI Engineering"} if alias_used else {}).copy()
         numeric_required = [
-            TARGET,"salary_min_usd","salary_max_usd","years_of_experience",
-            "ai_salary_premium_pct","demand_score","demand_growth_yoy_pct",
-            "benefits_score_10","posting_year","posting_month",
+            TARGET,
+            "salary_min_usd",
+            "salary_max_usd",
+            "years_of_experience",
+            "ai_salary_premium_pct",
+            "demand_score",
+            "demand_growth_yoy_pct",
+            "benefits_score_10",
+            "posting_year",
+            "posting_month",
         ]
         for c in numeric_required:
             coerced = pd.to_numeric(work[c], errors="coerce")
             bad = int((coerced.isna() & work[c].notna()).sum())
             if bad > 0:
-                issues.append({"level":"ERROR","field":c,"message":f"{bad} value(s) cannot be parsed as numeric."})
-        for c in [TARGET,"posting_year","posting_month"]:
+                issues.append(
+                    {
+                        "level": "ERROR",
+                        "field": c,
+                        "message": f"{bad} value(s) cannot be parsed as numeric.",
+                    }
+                )
+        for c in [TARGET, "posting_year", "posting_month"]:
             if work[c].isna().any():
-                issues.append({"level":"ERROR","field":c,"message":"Missing values are not allowed for full supervised processing."})
+                issues.append(
+                    {
+                        "level": "ERROR",
+                        "field": c,
+                        "message": "Missing values are not allowed for full supervised processing.",
+                    }
+                )
         months = pd.to_numeric(work["posting_month"], errors="coerce")
-        invalid_months = int((~months.between(1,12)).fillna(True).sum())
+        invalid_months = int((~months.between(1, 12)).fillna(True).sum())
         if invalid_months:
-            issues.append({"level":"ERROR","field":"posting_month","message":f"{invalid_months} row(s) have month outside 1..12 or are not numeric."})
+            issues.append(
+                {
+                    "level": "ERROR",
+                    "field": "posting_month",
+                    "message": f"{invalid_months} row(s) have month outside 1..12 or are not numeric.",
+                }
+            )
         if len(work) < 30:
-            issues.append({"level":"WARNING","field":"__rows__","message":"Very small dataset; temporal CV and clustering may be unstable."})
-        period_pairs = work[["posting_year","posting_month"]].apply(pd.to_numeric,errors="coerce").dropna().drop_duplicates()
+            issues.append(
+                {
+                    "level": "WARNING",
+                    "field": "__rows__",
+                    "message": "Very small dataset; temporal CV and clustering may be unstable.",
+                }
+            )
+        period_pairs = (
+            work[["posting_year", "posting_month"]]
+            .apply(pd.to_numeric, errors="coerce")
+            .dropna()
+            .drop_duplicates()
+        )
         if len(period_pairs) < 3:
-            issues.append({"level":"ERROR","field":"posting_year/posting_month","message":"At least 3 distinct monthly periods are required for temporal validation."})
+            issues.append(
+                {
+                    "level": "ERROR",
+                    "field": "posting_year/posting_month",
+                    "message": "At least 3 distinct monthly periods are required for temporal validation.",
+                }
+            )
         if work.duplicated().any():
-            issues.append({"level":"WARNING","field":"__rows__","message":f"{int(work.duplicated().sum())} exact duplicate row(s) detected; Basic Clean will remove them."})
+            issues.append(
+                {
+                    "level": "WARNING",
+                    "field": "__rows__",
+                    "message": f"{int(work.duplicated().sum())} exact duplicate row(s) detected; Basic Clean will remove them.",
+                }
+            )
         if work["job_id"].duplicated().any():
-            issues.append({"level":"WARNING","field":"job_id","message":f"{int(work['job_id'].duplicated().sum())} duplicate identifier value(s) detected."})
+            issues.append(
+                {
+                    "level": "WARNING",
+                    "field": "job_id",
+                    "message": f"{int(work['job_id'].duplicated().sum())} duplicate identifier value(s) detected.",
+                }
+            )
         hidden = 0
         for c in work.select_dtypes(include="object").columns:
-            hidden += int(work[c].astype(str).str.strip().isin(["","nan","None","null","NA","N/A"]).sum())
+            hidden += int(
+                work[c].astype(str).str.strip().isin(["", "nan", "None", "null", "NA", "N/A"]).sum()
+            )
         if hidden:
-            issues.append({"level":"WARNING","field":"__text__","message":f"{hidden} hidden-missing text value(s) detected; review before operational use."})
+            issues.append(
+                {
+                    "level": "WARNING",
+                    "field": "__text__",
+                    "message": f"{hidden} hidden-missing text value(s) detected; review before operational use.",
+                }
+            )
 
-    valid = not any(i["level"]=="ERROR" for i in issues)
+    valid = not any(i["level"] == "ERROR" for i in issues)
     return {
         "valid": valid,
         "rows": int(len(df)),
@@ -237,7 +361,8 @@ def read_raw(path: Path) -> pd.DataFrame:
 
 
 def normalize_skills(value: Any, delimiter: str = "|") -> list[str]:
-    if pd.isna(value): return []
+    if pd.isna(value):
+        return []
     tokens = [re.sub(r"\s+", " ", t.strip()) for t in str(value).split(delimiter)]
     return sorted(dict.fromkeys(t for t in tokens if t))
 
@@ -252,14 +377,16 @@ def profile_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     for c in df.columns:
         s = df[c]
         hidden = int(s.astype(str).str.strip().isin(["", "nan", "None", "null", "NA", "N/A"]).sum())
-        rows.append({
-            "column": c,
-            "dtype": str(s.dtype),
-            "unique": int(s.nunique(dropna=True)),
-            "unique_pct": round(100 * s.nunique(dropna=True) / n, 2),
-            "missing": int(s.isna().sum()),
-            "hidden_missing": hidden,
-        })
+        rows.append(
+            {
+                "column": c,
+                "dtype": str(s.dtype),
+                "unique": int(s.nunique(dropna=True)),
+                "unique_pct": round(100 * s.nunique(dropna=True) / n, 2),
+                "missing": int(s.isna().sum()),
+                "hidden_missing": hidden,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -271,14 +398,18 @@ def basic_clean(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
     duplicate_rows = int(df.duplicated().sum())
     if duplicate_rows:
         df = df.drop_duplicates().copy()
-    identifier_unique = bool("job_id" in df.columns and df["job_id"].nunique(dropna=False) == len(df))
+    identifier_unique = bool(
+        "job_id" in df.columns and df["job_id"].nunique(dropna=False) == len(df)
+    )
     if "job_id" in df.columns:
         df = df.drop(columns=["job_id"])
     audit = {
         "raw_rows": int(len(raw)),
         "raw_columns": int(raw.shape[1]),
         "invalid_category_rows_removed": int(bad_mask.sum()),
-        "invalid_category_job_ids": removed_bad.get("job_id", pd.Series(dtype=str)).astype(str).tolist(),
+        "invalid_category_job_ids": removed_bad.get("job_id", pd.Series(dtype=str))
+        .astype(str)
+        .tolist(),
         "duplicate_rows_removed": duplicate_rows,
         "identifier_was_unique": identifier_unique,
         "identifier_removed": True,
@@ -290,47 +421,118 @@ def basic_clean(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
 
 
 def _experience_expected(level: str, years: float) -> bool:
-    if pd.isna(level) or pd.isna(years): return False
+    if pd.isna(level) or pd.isna(years):
+        return False
     y = float(years)
     s = str(level)
-    if s.startswith("Entry"): return y <= 2
-    if s.startswith("Mid"): return 3 <= y <= 5
-    if s.startswith("Senior"): return 6 <= y <= 9
-    if s.startswith("Lead"): return y >= 10
+    if s.startswith("Entry"):
+        return y <= 2
+    if s.startswith("Mid"):
+        return 3 <= y <= 5
+    if s.startswith("Senior"):
+        return 6 <= y <= 9
+    if s.startswith("Lead"):
+        return y >= 10
     return False
 
 
 def expected_salary_tier(salary: float) -> str:
-    if salary < 100_000: return "Entry (<$100k)"
-    if salary < 150_000: return "Mid ($100-150k)"
-    if salary < 200_000: return "Upper-Mid ($150-200k)"
-    if salary < 300_000: return "Senior ($200-300k)"
+    if salary < 100_000:
+        return "Entry (<$100k)"
+    if salary < 150_000:
+        return "Mid ($100-150k)"
+    if salary < 200_000:
+        return "Upper-Mid ($150-200k)"
+    if salary < 300_000:
+        return "Senior ($200-300k)"
     return "Elite (>$300k)"
 
 
 def contradiction_outputs(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    exp_bad = ~pd.Series([_experience_expected(a, b) for a, b in zip(df["experience_level"], df["years_of_experience"])], index=df.index)
+    exp_bad = ~pd.Series(
+        [
+            _experience_expected(a, b)
+            for a, b in zip(df["experience_level"], df["years_of_experience"])
+        ],
+        index=df.index,
+    )
     tier_bad = df[TARGET].map(expected_salary_tier).ne(df["salary_tier"])
     range_bad = (df[TARGET] < df["salary_min_usd"]) | (df[TARGET] > df["salary_max_usd"])
-    dup_skill = df["required_skills"].map(lambda x: len(str(x).split("|")) > len(normalize_skills(x)))
-    findings = pd.DataFrame([
-        {"issue": "Experience bucket mismatch", "affected_rows": int(exp_bad.sum()), "affected_pct": 100*exp_bad.mean(), "severity": "High", "required_action": "Treat experience_level as contradictory/redundant; test years_of_experience separately."},
-        {"issue": "Salary tier inconsistency", "affected_rows": int(tier_bad.sum()), "affected_pct": 100*tier_bad.mean(), "severity": "High", "required_action": "Block salary_tier from predictors because it is target-adjacent and inconsistent."},
-        {"issue": "Salary outside stated min/max", "affected_rows": int(range_bad.sum()), "affected_pct": 100*range_bad.mean(), "severity": "High", "required_action": "Block salary_min_usd and salary_max_usd from predictors; retain for audit only."},
-        {"issue": "Duplicate skill tokens", "affected_rows": int(dup_skill.sum()), "affected_pct": 100*dup_skill.mean(), "severity": "Medium", "required_action": "Normalize and deduplicate skills before multi-hot encoding."},
-    ]).sort_values("affected_pct", ascending=False).reset_index(drop=True)
-    by_level = df.groupby("experience_level", observed=True).agg(
-        records=(TARGET,"size"), years_mean=("years_of_experience","mean"), years_median=("years_of_experience","median"),
-        salary_mean=(TARGET,"mean"), salary_median=(TARGET,"median")
+    dup_skill = df["required_skills"].map(
+        lambda x: len(str(x).split("|")) > len(normalize_skills(x))
+    )
+    findings = (
+        pd.DataFrame(
+            [
+                {
+                    "issue": "Experience bucket mismatch",
+                    "affected_rows": int(exp_bad.sum()),
+                    "affected_pct": 100 * exp_bad.mean(),
+                    "severity": "High",
+                    "required_action": "Treat experience_level as contradictory/redundant; test years_of_experience separately.",
+                },
+                {
+                    "issue": "Salary tier inconsistency",
+                    "affected_rows": int(tier_bad.sum()),
+                    "affected_pct": 100 * tier_bad.mean(),
+                    "severity": "High",
+                    "required_action": "Block salary_tier from predictors because it is target-adjacent and inconsistent.",
+                },
+                {
+                    "issue": "Salary outside stated min/max",
+                    "affected_rows": int(range_bad.sum()),
+                    "affected_pct": 100 * range_bad.mean(),
+                    "severity": "High",
+                    "required_action": "Block salary_min_usd and salary_max_usd from predictors; retain for audit only.",
+                },
+                {
+                    "issue": "Duplicate skill tokens",
+                    "affected_rows": int(dup_skill.sum()),
+                    "affected_pct": 100 * dup_skill.mean(),
+                    "severity": "Medium",
+                    "required_action": "Normalize and deduplicate skills before multi-hot encoding.",
+                },
+            ]
+        )
+        .sort_values("affected_pct", ascending=False)
+        .reset_index(drop=True)
+    )
+    by_level = (
+        df.groupby("experience_level", observed=True)
+        .agg(
+            records=(TARGET, "size"),
+            years_mean=("years_of_experience", "mean"),
+            years_median=("years_of_experience", "median"),
+            salary_mean=(TARGET, "mean"),
+            salary_median=(TARGET, "median"),
+        )
+        .reset_index()
+    )
+    by_years = (
+        df.groupby("years_of_experience", observed=True)
+        .agg(
+            records=(TARGET, "size"), salary_mean=(TARGET, "mean"), salary_median=(TARGET, "median")
+        )
+        .reset_index()
+        .sort_values("years_of_experience")
+    )
+    by_domain = (
+        df.groupby("job_category", observed=True)
+        .agg(
+            records=(TARGET, "size"), salary_mean=(TARGET, "mean"), salary_median=(TARGET, "median")
+        )
+        .reset_index()
+        .sort_values("salary_mean", ascending=False)
+    )
+    range_status = (
+        pd.DataFrame({"status": np.where(range_bad, "Outside stated range", "Inside stated range")})
+        .value_counts()
+        .rename("rows")
+        .reset_index()
+    )
+    tier_crosstab = pd.crosstab(
+        df["salary_tier"], df[TARGET].map(expected_salary_tier)
     ).reset_index()
-    by_years = df.groupby("years_of_experience", observed=True).agg(
-        records=(TARGET,"size"), salary_mean=(TARGET,"mean"), salary_median=(TARGET,"median")
-    ).reset_index().sort_values("years_of_experience")
-    by_domain = df.groupby("job_category", observed=True).agg(records=(TARGET,"size"), salary_mean=(TARGET,"mean"), salary_median=(TARGET,"median")).reset_index().sort_values("salary_mean", ascending=False)
-    range_status = pd.DataFrame({
-        "status": np.where(range_bad, "Outside stated range", "Inside stated range")
-    }).value_counts().rename("rows").reset_index()
-    tier_crosstab = pd.crosstab(df["salary_tier"], df[TARGET].map(expected_salary_tier)).reset_index()
     return findings, {
         "experience_by_level": by_level,
         "salary_by_years": by_years,
@@ -340,79 +542,225 @@ def contradiction_outputs(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, pd.
     }
 
 
-def stage1_detailed_outputs(df: pd.DataFrame) -> dict[str,pd.DataFrame]:
+def stage1_detailed_outputs(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Audit-ready long tables used by Streamlit interactive views."""
-    work=df.copy().reset_index(drop=True)
-    work["record_id"] = np.arange(1, len(work)+1)
-    exp_bad = ~pd.Series([_experience_expected(a,b) for a,b in zip(work["experience_level"],work["years_of_experience"])], index=work.index)
+    work = df.copy().reset_index(drop=True)
+    work["record_id"] = np.arange(1, len(work) + 1)
+    exp_bad = ~pd.Series(
+        [
+            _experience_expected(a, b)
+            for a, b in zip(work["experience_level"], work["years_of_experience"])
+        ],
+        index=work.index,
+    )
     expected_tier = work[TARGET].map(expected_salary_tier)
     tier_bad = expected_tier.ne(work["salary_tier"])
     range_bad = (work[TARGET] < work["salary_min_usd"]) | (work[TARGET] > work["salary_max_usd"])
-    flags = work[["record_id","job_title","job_category","experience_level","years_of_experience",TARGET,"salary_min_usd","salary_max_usd","salary_tier","country","city"]].copy()
+    flags = work[
+        [
+            "record_id",
+            "job_title",
+            "job_category",
+            "experience_level",
+            "years_of_experience",
+            TARGET,
+            "salary_min_usd",
+            "salary_max_usd",
+            "salary_tier",
+            "country",
+            "city",
+        ]
+    ].copy()
     flags["expected_salary_tier"] = expected_tier
     flags["experience_mismatch"] = exp_bad
     flags["salary_tier_mismatch"] = tier_bad
     flags["salary_range_mismatch"] = range_bad
-    num_cols=[c for c in work.select_dtypes(include=np.number).columns if c!="record_id"]
-    desc=work[num_cols].describe(percentiles=[.25,.5,.75]).T.reset_index().rename(columns={"index":"feature"})
-    long_cats=[]
+    num_cols = [c for c in work.select_dtypes(include=np.number).columns if c != "record_id"]
+    desc = (
+        work[num_cols]
+        .describe(percentiles=[0.25, 0.5, 0.75])
+        .T.reset_index()
+        .rename(columns={"index": "feature"})
+    )
+    long_cats = []
     for c in work.select_dtypes(exclude=np.number).columns:
-        if c=="required_skills": continue
-        vc=work[c].astype(str).value_counts(dropna=False).head(50)
-        for value,count in vc.items(): long_cats.append({"feature":c,"category":value,"records":int(count),"share_pct":100*count/len(work)})
-    cat_summary=pd.DataFrame(long_cats)
-    return {"integrity_row_flags":flags,"numeric_descriptive_summary":desc,"categorical_frequency_summary":cat_summary}
+        if c == "required_skills":
+            continue
+        vc = work[c].astype(str).value_counts(dropna=False).head(50)
+        for value, count in vc.items():
+            long_cats.append(
+                {
+                    "feature": c,
+                    "category": value,
+                    "records": int(count),
+                    "share_pct": 100 * count / len(work),
+                }
+            )
+    cat_summary = pd.DataFrame(long_cats)
+    return {
+        "integrity_row_flags": flags,
+        "numeric_descriptive_summary": desc,
+        "categorical_frequency_summary": cat_summary,
+    }
 
-def stage2_detailed_outputs(dev: pd.DataFrame, test: pd.DataFrame, prep: ColumnTransformer, ztr: np.ndarray, names: np.ndarray) -> dict[str,pd.DataFrame]:
-    periods=pd.to_datetime(dict(year=pd.concat([dev,test])["posting_year"].astype(int), month=pd.concat([dev,test])["posting_month"].astype(int), day=1))
-    tmp=pd.DataFrame({"period":periods.dt.strftime("%Y-%m"),"split":["Development"]*len(dev)+["Locked test"]*len(test)})
-    monthly=tmp.groupby(["period","split"]).size().rename("records").reset_index()
-    fmap=[]
+
+def stage2_detailed_outputs(
+    dev: pd.DataFrame,
+    test: pd.DataFrame,
+    prep: ColumnTransformer,
+    ztr: np.ndarray,
+    names: np.ndarray,
+) -> dict[str, pd.DataFrame]:
+    periods = pd.to_datetime(
+        dict(
+            year=pd.concat([dev, test])["posting_year"].astype(int),
+            month=pd.concat([dev, test])["posting_month"].astype(int),
+            day=1,
+        )
+    )
+    tmp = pd.DataFrame(
+        {
+            "period": periods.dt.strftime("%Y-%m"),
+            "split": ["Development"] * len(dev) + ["Locked test"] * len(test),
+        }
+    )
+    monthly = tmp.groupby(["period", "split"]).size().rename("records").reset_index()
+    fmap = []
     for n in names:
-        txt=str(n); src=txt.split("__",1)[-1]
-        if txt.startswith("skills__") or "skill__" in txt: original="required_skills"
-        elif txt.startswith("numeric__"): original=src
+        txt = str(n)
+        src = txt.split("__", 1)[-1]
+        if txt.startswith("skills__") or "skill__" in txt:
+            original = "required_skills"
+        elif txt.startswith("numeric__"):
+            original = src
         elif txt.startswith("nominal__"):
-            tail=src
-            candidates=["job_title","job_category","education_required","city","country","remote_work","company_size","industry"]
-            original=next((c for c in candidates if tail.startswith(c+"_") or tail==c), tail.split("_")[0])
-        else: original=src
-        fmap.append({"encoded_feature":txt,"original_feature":original,"transformer":txt.split("__",1)[0] if "__" in txt else "custom"})
-    fmap=pd.DataFrame(fmap)
-    rows=[]
-    for c in ["years_of_experience","demand_score","benefits_score_10","skill_count"]:
-        if c not in dev: continue
-        enc_name=next((str(n) for n in names if str(n).endswith("__"+c) or str(n)==c),None)
-        if enc_name is None: continue
-        j=list(map(str,names)).index(enc_name); a=ztr[:,j]
-        rows.append({"feature":c,"before_mean":float(dev[c].mean()),"before_std":float(dev[c].std(ddof=0)),"before_min":float(dev[c].min()),"before_max":float(dev[c].max()),"after_mean":float(np.mean(a)),"after_std":float(np.std(a)),"after_min":float(np.min(a)),"after_max":float(np.max(a))})
-    scaling=pd.DataFrame(rows)
-    skill_rows=[]
-    for _,r in dev[["required_skills",TARGET,"years_of_experience"]].iterrows():
-        for tok in normalize_skills(r.required_skills): skill_rows.append({"skill":tok,TARGET:r[TARGET],"years_of_experience":r.years_of_experience})
-    skills=pd.DataFrame(skill_rows)
+            tail = src
+            candidates = [
+                "job_title",
+                "job_category",
+                "education_required",
+                "city",
+                "country",
+                "remote_work",
+                "company_size",
+                "industry",
+            ]
+            original = next(
+                (c for c in candidates if tail.startswith(c + "_") or tail == c), tail.split("_")[0]
+            )
+        else:
+            original = src
+        fmap.append(
+            {
+                "encoded_feature": txt,
+                "original_feature": original,
+                "transformer": txt.split("__", 1)[0] if "__" in txt else "custom",
+            }
+        )
+    fmap = pd.DataFrame(fmap)
+    rows = []
+    for c in ["years_of_experience", "demand_score", "benefits_score_10", "skill_count"]:
+        if c not in dev:
+            continue
+        enc_name = next((str(n) for n in names if str(n).endswith("__" + c) or str(n) == c), None)
+        if enc_name is None:
+            continue
+        j = list(map(str, names)).index(enc_name)
+        a = ztr[:, j]
+        rows.append(
+            {
+                "feature": c,
+                "before_mean": float(dev[c].mean()),
+                "before_std": float(dev[c].std(ddof=0)),
+                "before_min": float(dev[c].min()),
+                "before_max": float(dev[c].max()),
+                "after_mean": float(np.mean(a)),
+                "after_std": float(np.std(a)),
+                "after_min": float(np.min(a)),
+                "after_max": float(np.max(a)),
+            }
+        )
+    scaling = pd.DataFrame(rows)
+    skill_rows = []
+    for _, r in dev[["required_skills", TARGET, "years_of_experience"]].iterrows():
+        for tok in normalize_skills(r.required_skills):
+            skill_rows.append(
+                {"skill": tok, TARGET: r[TARGET], "years_of_experience": r.years_of_experience}
+            )
+    skills = pd.DataFrame(skill_rows)
     if len(skills):
-        skills=skills.groupby("skill").agg(records=(TARGET,"size"),salary_mean=(TARGET,"mean"),salary_median=(TARGET,"median"),years_mean=("years_of_experience","mean")).reset_index().sort_values("records",ascending=False)
+        skills = (
+            skills.groupby("skill")
+            .agg(
+                records=(TARGET, "size"),
+                salary_mean=(TARGET, "mean"),
+                salary_median=(TARGET, "median"),
+                years_mean=("years_of_experience", "mean"),
+            )
+            .reset_index()
+            .sort_values("records", ascending=False)
+        )
     # Point-biserial/Pearson correlation of each TRAIN-only multi-hot skill indicator with target.
-    y=dev[TARGET].to_numpy(dtype=float); skill_corr_rows=[]
-    vocab=sorted({t for v in dev["required_skills"] for t in normalize_skills(v)})
-    token_sets=[set(normalize_skills(v)) for v in dev["required_skills"]]
+    y = dev[TARGET].to_numpy(dtype=float)
+    skill_corr_rows = []
+    vocab = sorted({t for v in dev["required_skills"] for t in normalize_skills(v)})
+    token_sets = [set(normalize_skills(v)) for v in dev["required_skills"]]
     for tok in vocab:
-        x=np.fromiter((1.0 if tok in ss else 0.0 for ss in token_sets),dtype=float,count=len(token_sets))
-        r=0.0 if np.std(x)==0 else float(np.corrcoef(x,y)[0,1])
-        skill_corr_rows.append({"skill":tok,"records":int(x.sum()),"pearson_r":r,"abs_r":abs(r)})
-    skill_corr=pd.DataFrame(skill_corr_rows).sort_values("abs_r",ascending=False)
-    return {"monthly_split_counts":monthly,"preprocessing_feature_map":fmap,"numeric_scaling_summary":scaling,"skill_token_summary":skills,"skill_target_correlations":skill_corr}
+        x = np.fromiter(
+            (1.0 if tok in ss else 0.0 for ss in token_sets), dtype=float, count=len(token_sets)
+        )
+        r = 0.0 if np.std(x) == 0 else float(np.corrcoef(x, y)[0, 1])
+        skill_corr_rows.append(
+            {"skill": tok, "records": int(x.sum()), "pearson_r": r, "abs_r": abs(r)}
+        )
+    skill_corr = pd.DataFrame(skill_corr_rows).sort_values("abs_r", ascending=False)
+    return {
+        "monthly_split_counts": monthly,
+        "preprocessing_feature_map": fmap,
+        "numeric_scaling_summary": scaling,
+        "skill_token_summary": skills,
+        "skill_target_correlations": skill_corr,
+    }
 
-def best_model_subgroup_outputs(pred_df: pd.DataFrame) -> dict[str,pd.DataFrame]:
-    outs={}
-    for c in ["job_category","country","remote_work","company_size"]:
-        if c not in pred_df: continue
-        g=pred_df.groupby(c,observed=True).agg(records=("absolute_error_usd","size"),MAE=("absolute_error_usd","mean"),median_abs_error=("absolute_error_usd","median"),actual_salary_mean=(TARGET,"mean"),predicted_salary_mean=("predicted_salary_usd","mean")).reset_index().sort_values("MAE",ascending=False)
-        outs[f"error_by_{c}"]=g
-    tmp=pred_df.copy(); tmp["experience_band"]=pd.cut(tmp["years_of_experience"],bins=[0,2,5,9,np.inf],labels=["Entry (1-2)","Mid (3-5)","Senior (6-9)","Lead (10+)"],include_lowest=True)
-    outs["error_by_experience_band"]=tmp.groupby("experience_band",observed=True).agg(records=("absolute_error_usd","size"),MAE=("absolute_error_usd","mean"),median_abs_error=("absolute_error_usd","median"),actual_salary_mean=(TARGET,"mean"),predicted_salary_mean=("predicted_salary_usd","mean")).reset_index()
+
+def best_model_subgroup_outputs(pred_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    outs = {}
+    for c in ["job_category", "country", "remote_work", "company_size"]:
+        if c not in pred_df:
+            continue
+        g = (
+            pred_df.groupby(c, observed=True)
+            .agg(
+                records=("absolute_error_usd", "size"),
+                MAE=("absolute_error_usd", "mean"),
+                median_abs_error=("absolute_error_usd", "median"),
+                actual_salary_mean=(TARGET, "mean"),
+                predicted_salary_mean=("predicted_salary_usd", "mean"),
+            )
+            .reset_index()
+            .sort_values("MAE", ascending=False)
+        )
+        outs[f"error_by_{c}"] = g
+    tmp = pred_df.copy()
+    tmp["experience_band"] = pd.cut(
+        tmp["years_of_experience"],
+        bins=[0, 2, 5, 9, np.inf],
+        labels=["Entry (1-2)", "Mid (3-5)", "Senior (6-9)", "Lead (10+)"],
+        include_lowest=True,
+    )
+    outs["error_by_experience_band"] = (
+        tmp.groupby("experience_band", observed=True)
+        .agg(
+            records=("absolute_error_usd", "size"),
+            MAE=("absolute_error_usd", "mean"),
+            median_abs_error=("absolute_error_usd", "median"),
+            actual_salary_mean=(TARGET, "mean"),
+            predicted_salary_mean=("predicted_salary_usd", "mean"),
+        )
+        .reset_index()
+    )
     return outs
+
 
 def feature_policy_table() -> pd.DataFrame:
     blocked = {
@@ -431,14 +779,24 @@ def feature_policy_table() -> pd.DataFrame:
     }
     rows = []
     for c in MODEL_FEATURES:
-        rows.append({"feature": c, "policy": "ALLOW", "reason": "Known at prediction time; admitted by serving contract."})
+        rows.append(
+            {
+                "feature": c,
+                "policy": "ALLOW",
+                "reason": "Known at prediction time; admitted by serving contract.",
+            }
+        )
     for c, reason in blocked.items():
         rows.append({"feature": c, "policy": "BLOCK", "reason": reason})
-    rows.append({"feature": TARGET, "policy": "TARGET", "reason": "Prediction target; never included in X."})
+    rows.append(
+        {"feature": TARGET, "policy": "TARGET", "reason": "Prediction target; never included in X."}
+    )
     return pd.DataFrame(rows)
 
 
-def choose_locked_period(df: pd.DataFrame, preferred_year: int = 2026, preferred_month: int = 3) -> tuple[int, int, str]:
+def choose_locked_period(
+    df: pd.DataFrame, preferred_year: int = 2026, preferred_month: int = 3
+) -> tuple[int, int, str]:
     periods = sorted({(int(y), int(m)) for y, m in zip(df["posting_year"], df["posting_month"])})
     preferred = (preferred_year, preferred_month)
     if preferred in periods and preferred == max(periods):
@@ -449,7 +807,9 @@ def choose_locked_period(df: pd.DataFrame, preferred_year: int = 2026, preferred
     return y, m, "latest_available_period"
 
 
-def temporal_split(df: pd.DataFrame, preferred_year: int = 2026, preferred_month: int = 3) -> tuple[pd.DataFrame,pd.DataFrame,dict[str,Any]]:
+def temporal_split(
+    df: pd.DataFrame, preferred_year: int = 2026, preferred_month: int = 3
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     y, m, rule = choose_locked_period(df, preferred_year, preferred_month)
     test_mask = (df["posting_year"].astype(int) == y) & (df["posting_month"].astype(int) == m)
     dev = df.loc[~test_mask].copy()
@@ -457,9 +817,13 @@ def temporal_split(df: pd.DataFrame, preferred_year: int = 2026, preferred_month
     if len(test) == 0 or len(dev) == 0:
         raise ValueError("Temporal split failed: development or locked-test set is empty.")
     summary = {
-        "locked_test_year": y, "locked_test_month": m, "selection_rule": rule,
-        "development_rows": int(len(dev)), "locked_test_rows": int(len(test)),
-        "development_pct": 100*len(dev)/len(df), "locked_test_pct": 100*len(test)/len(df),
+        "locked_test_year": y,
+        "locked_test_month": m,
+        "selection_rule": rule,
+        "development_rows": int(len(dev)),
+        "locked_test_rows": int(len(test)),
+        "development_pct": 100 * len(dev) / len(df),
+        "locked_test_pct": 100 * len(test) / len(df),
         "locked_test_period_label": f"{y:04d}-{m:02d}",
     }
     return dev.reset_index(drop=True), test.reset_index(drop=True), summary
@@ -468,49 +832,84 @@ def temporal_split(df: pd.DataFrame, preferred_year: int = 2026, preferred_month
 class SkillMultiHotEncoder(BaseEstimator, TransformerMixin):
     def __init__(self, delimiter: str = "|"):
         self.delimiter = delimiter
+
     def fit(self, X, y=None):
         values = self._values(X)
         self.vocabulary_ = sorted({t for v in values for t in normalize_skills(v, self.delimiter)})
-        self.index_ = {t:i for i,t in enumerate(self.vocabulary_)}
+        self.index_ = {t: i for i, t in enumerate(self.vocabulary_)}
         return self
+
     def transform(self, X):
         values = self._values(X)
         arr = np.zeros((len(values), len(self.vocabulary_)), dtype=float)
         for i, v in enumerate(values):
             for t in normalize_skills(v, self.delimiter):
                 j = self.index_.get(t)
-                if j is not None: arr[i,j] = 1.0
+                if j is not None:
+                    arr[i, j] = 1.0
         return arr
+
     def get_feature_names_out(self, input_features=None):
         return np.array([f"skill__{t}" for t in self.vocabulary_], dtype=object)
+
     @staticmethod
     def _values(X):
-        if isinstance(X, pd.DataFrame): return X.iloc[:,0].tolist()
-        if isinstance(X, pd.Series): return X.tolist()
-        a=np.asarray(X, dtype=object)
-        if a.ndim==2: a=a[:,0]
+        if isinstance(X, pd.DataFrame):
+            return X.iloc[:, 0].tolist()
+        if isinstance(X, pd.Series):
+            return X.tolist()
+        a = np.asarray(X, dtype=object)
+        if a.ndim == 2:
+            a = a[:, 0]
         return a.tolist()
 
 
 def make_salary_preprocessor(features: list[str] | None = None) -> ColumnTransformer:
     features = features or MODEL_FEATURES
-    cats = [c for c in ["job_title","job_category","experience_level","education_required","city","country","remote_work","company_size","industry"] if c in features]
-    nums = [c for c in ["years_of_experience","demand_score","benefits_score_10","skill_count"] if c in features]
+    cats = [
+        c
+        for c in [
+            "job_title",
+            "job_category",
+            "experience_level",
+            "education_required",
+            "city",
+            "country",
+            "remote_work",
+            "company_size",
+            "industry",
+        ]
+        if c in features
+    ]
+    nums = [
+        c
+        for c in ["years_of_experience", "demand_score", "benefits_score_10", "skill_count"]
+        if c in features
+    ]
     transformers = []
     if cats:
-        transformers.append(("nominal", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cats))
+        transformers.append(
+            ("nominal", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cats)
+        )
     if nums:
         transformers.append(("numeric", StandardScaler(), nums))
     if "required_skills" in features:
         transformers.append(("skills", SkillMultiHotEncoder(), ["required_skills"]))
-    return ColumnTransformer(transformers=transformers, remainder="drop", verbose_feature_names_out=True, sparse_threshold=0.0)
+    return ColumnTransformer(
+        transformers=transformers,
+        remainder="drop",
+        verbose_feature_names_out=True,
+        sparse_threshold=0.0,
+    )
 
 
 def make_model_pipeline(model: BaseEstimator, features: list[str] | None = None) -> Pipeline:
     return Pipeline([("preprocess", make_salary_preprocessor(features)), ("model", model)])
 
 
-def temporal_cv_splits(dev: pd.DataFrame, n_splits: int = 5, block_size: int = 200) -> list[tuple[np.ndarray,np.ndarray,str]]:
+def temporal_cv_splits(
+    dev: pd.DataFrame, n_splits: int = 5, block_size: int = 200
+) -> list[tuple[np.ndarray, np.ndarray, str]]:
     """Temporal sliding-window cross-validation.
 
     1. Sorts chronologically by posting_year and posting_month.
@@ -549,141 +948,216 @@ def temporal_cv_splits(dev: pd.DataFrame, n_splits: int = 5, block_size: int = 2
     return out
 
 
-def regression_metrics(y_true, y_pred) -> dict[str,float]:
+def regression_metrics(y_true, y_pred) -> dict[str, float]:
     return {
-        "MAE": float(mean_absolute_error(y_true,y_pred)),
-        "RMSE": float(mean_squared_error(y_true,y_pred)**0.5),
-        "R2": float(r2_score(y_true,y_pred)),
-        "MedAE": float(median_absolute_error(y_true,y_pred)),
+        "MAE": float(mean_absolute_error(y_true, y_pred)),
+        "RMSE": float(mean_squared_error(y_true, y_pred) ** 0.5),
+        "R2": float(r2_score(y_true, y_pred)),
+        "MedAE": float(median_absolute_error(y_true, y_pred)),
     }
 
 
-def evaluate_model_cv(dev: pd.DataFrame, features: list[str], model_name: str, model: BaseEstimator, n_splits: int = 5) -> tuple[pd.DataFrame,dict[str,float]]:
-    X=dev[features]
-    y=dev[TARGET]
-    rows=[]
-    for i,(tr,va,label) in enumerate(temporal_cv_splits(dev,n_splits), start=1):
-        pipe=make_model_pipeline(clone(model),features)
-        t0=time.perf_counter(); pipe.fit(X.iloc[tr],y.iloc[tr]); fit_s=time.perf_counter()-t0
-        t1=time.perf_counter(); pred=pipe.predict(X.iloc[va]); predict_s=time.perf_counter()-t1
-        met=regression_metrics(y.iloc[va],pred)
-        rows.append({"model":model_name,"fold":i,"validation_period":label,"train_rows":len(tr),"validation_rows":len(va),"fit_time_s":fit_s,"predict_time_s":predict_s,**met})
-    fold=pd.DataFrame(rows)
-    summary={
+def evaluate_model_cv(
+    dev: pd.DataFrame, features: list[str], model_name: str, model: BaseEstimator, n_splits: int = 5
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    X = dev[features]
+    y = dev[TARGET]
+    rows = []
+    for i, (tr, va, label) in enumerate(temporal_cv_splits(dev, n_splits), start=1):
+        pipe = make_model_pipeline(clone(model), features)
+        t0 = time.perf_counter()
+        pipe.fit(X.iloc[tr], y.iloc[tr])
+        fit_s = time.perf_counter() - t0
+        t1 = time.perf_counter()
+        pred = pipe.predict(X.iloc[va])
+        predict_s = time.perf_counter() - t1
+        met = regression_metrics(y.iloc[va], pred)
+        rows.append(
+            {
+                "model": model_name,
+                "fold": i,
+                "validation_period": label,
+                "train_rows": len(tr),
+                "validation_rows": len(va),
+                "fit_time_s": fit_s,
+                "predict_time_s": predict_s,
+                **met,
+            }
+        )
+    fold = pd.DataFrame(rows)
+    summary = {
         "model": model_name,
-        "MAE_mean": float(fold.MAE.mean()), "MAE_std": float(fold.MAE.std(ddof=0)),
-        "RMSE_mean": float(fold.RMSE.mean()), "R2_mean": float(fold.R2.mean()), "MedAE_mean": float(fold.MedAE.mean()),
-        "fit_time_mean_s": float(fold.fit_time_s.mean()), "predict_time_mean_s": float(fold.predict_time_s.mean()),
+        "MAE_mean": float(fold.MAE.mean()),
+        "MAE_std": float(fold.MAE.std(ddof=0)),
+        "RMSE_mean": float(fold.RMSE.mean()),
+        "R2_mean": float(fold.R2.mean()),
+        "MedAE_mean": float(fold.MedAE.mean()),
+        "fit_time_mean_s": float(fold.fit_time_s.mean()),
+        "predict_time_mean_s": float(fold.predict_time_s.mean()),
         "folds": int(len(fold)),
     }
     return fold, summary
 
 
-def candidate_models(seed:int=42) -> dict[str,BaseEstimator]:
+def candidate_models(seed: int = 42) -> dict[str, BaseEstimator]:
     return {
         "Dummy Median": DummyRegressor(strategy="median"),
         "Linear Regression": LinearRegression(),
         "Ridge Regression": Ridge(alpha=10.0),
-        "Random Forest": RandomForestRegressor(n_estimators=180, min_samples_leaf=2, max_features=0.8, random_state=seed, n_jobs=1),
-        "Gradient Boosting": GradientBoostingRegressor(random_state=seed, n_estimators=180, learning_rate=0.04, max_depth=2, loss="huber"),
+        "Random Forest": RandomForestRegressor(
+            n_estimators=180, min_samples_leaf=2, max_features=0.8, random_state=seed, n_jobs=1
+        ),
+        "Gradient Boosting": GradientBoostingRegressor(
+            random_state=seed, n_estimators=180, learning_rate=0.04, max_depth=2, loss="huber"
+        ),
     }
 
 
-def run_ablation(dev: pd.DataFrame, seed:int=42, n_splits:int=5) -> pd.DataFrame:
-    options={
+def run_ablation(dev: pd.DataFrame, seed: int = 42, n_splits: int = 5) -> pd.DataFrame:
+    options = {
         "A — Conservative Core": MODEL_FEATURES,
-        "B — Simplifier": ["job_category","years_of_experience"],
-        "C — Exclude job_category": [c for c in MODEL_FEATURES if c!="job_category"],
-        "D — Exclude years_of_experience": [c for c in MODEL_FEATURES if c!="years_of_experience"],
+        "B — Simplifier": ["job_category", "years_of_experience"],
+        "C — Exclude job_category": [c for c in MODEL_FEATURES if c != "job_category"],
+        "D — Exclude years_of_experience": [
+            c for c in MODEL_FEATURES if c != "years_of_experience"
+        ],
     }
-    model=RandomForestRegressor(n_estimators=120,min_samples_leaf=2,max_features=0.8,random_state=seed,n_jobs=1)
-    rows=[]
-    for name,features in options.items():
-        _,s=evaluate_model_cv(dev,features,name,model,n_splits)
-        rows.append({"option":name,"feature_count":len(features),"features":" | ".join(features),**{k:v for k,v in s.items() if k not in ["model"]}})
+    model = RandomForestRegressor(
+        n_estimators=120, min_samples_leaf=2, max_features=0.8, random_state=seed, n_jobs=1
+    )
+    rows = []
+    for name, features in options.items():
+        _, s = evaluate_model_cv(dev, features, name, model, n_splits)
+        rows.append(
+            {
+                "option": name,
+                "feature_count": len(features),
+                "features": " | ".join(features),
+                **{k: v for k, v in s.items() if k not in ["model"]},
+            }
+        )
     return pd.DataFrame(rows).sort_values("MAE_mean").reset_index(drop=True)
 
 
-
-def run_feature_family_ablation(dev: pd.DataFrame, seed:int=42, n_splits:int=5) -> pd.DataFrame:
+def run_feature_family_ablation(
+    dev: pd.DataFrame, seed: int = 42, n_splits: int = 5
+) -> pd.DataFrame:
     """Branch-B family ablation aligned with the richer FPTCranes-PRJ2-main evidence."""
-    core=[
-        "job_title","job_category","education_required","city","country",
-        "remote_work","company_size","industry","demand_score","benefits_score_10",
+    core = [
+        "job_title",
+        "job_category",
+        "education_required",
+        "city",
+        "country",
+        "remote_work",
+        "company_size",
+        "industry",
+        "demand_score",
+        "benefits_score_10",
     ]
-    options={
+    options = {
         "A0_CONSERVATIVE_CORE": core,
-        "A1_PLUS_YEARS": core+["years_of_experience"],
-        "A2_EXPERIENCE_BUCKET": core+["experience_level"],
-        "A6_SKILLS": core+["years_of_experience","required_skills","skill_count"],
+        "A1_PLUS_YEARS": core + ["years_of_experience"],
+        "A2_EXPERIENCE_BUCKET": core + ["experience_level"],
+        "A6_SKILLS": core + ["years_of_experience", "required_skills", "skill_count"],
     }
-    model=RandomForestRegressor(n_estimators=140,min_samples_leaf=2,max_features=0.8,random_state=seed,n_jobs=1)
-    rows=[]
-    baseline=None
-    for name,features in options.items():
-        _,s=evaluate_model_cv(dev,features,name,model,n_splits)
-        row={"experiment":name,"feature_count":len(features),"features":" | ".join(features),
-             "MAE_mean":s["MAE_mean"],"MAE_std":s["MAE_std"],"RMSE_mean":s["RMSE_mean"],
-             "R2_mean":s["R2_mean"],"MedAE_mean":s["MedAE_mean"]}
+    model = RandomForestRegressor(
+        n_estimators=140, min_samples_leaf=2, max_features=0.8, random_state=seed, n_jobs=1
+    )
+    rows = []
+    baseline = None
+    for name, features in options.items():
+        _, s = evaluate_model_cv(dev, features, name, model, n_splits)
+        row = {
+            "experiment": name,
+            "feature_count": len(features),
+            "features": " | ".join(features),
+            "MAE_mean": s["MAE_mean"],
+            "MAE_std": s["MAE_std"],
+            "RMSE_mean": s["RMSE_mean"],
+            "R2_mean": s["R2_mean"],
+            "MedAE_mean": s["MedAE_mean"],
+        }
         rows.append(row)
-        if name=="A0_CONSERVATIVE_CORE":
-            baseline=s["MAE_mean"]
-    out=pd.DataFrame(rows)
+        if name == "A0_CONSERVATIVE_CORE":
+            baseline = s["MAE_mean"]
+    out = pd.DataFrame(rows)
     if baseline is not None:
-        out["improvement_vs_A0_pct"]=100*(baseline-out["MAE_mean"])/baseline
+        out["improvement_vs_A0_pct"] = 100 * (baseline - out["MAE_mean"]) / baseline
     return out.sort_values("MAE_mean").reset_index(drop=True)
 
 
-def random_forest_importance_by_fold(dev: pd.DataFrame, seed:int=42, n_splits:int=5) -> pd.DataFrame:
+def random_forest_importance_by_fold(
+    dev: pd.DataFrame, seed: int = 42, n_splits: int = 5
+) -> pd.DataFrame:
     """Track encoded RF importance across temporal folds to expose reliance drift."""
-    rows=[]
-    X=dev[MODEL_FEATURES]; y=dev[TARGET]
-    base=RandomForestRegressor(n_estimators=180,min_samples_leaf=2,max_features=0.8,random_state=seed,n_jobs=1)
-    for fold,(tr,va,label) in enumerate(temporal_cv_splits(dev,n_splits),1):
-        pipe=make_model_pipeline(clone(base),MODEL_FEATURES)
-        pipe.fit(X.iloc[tr],y.iloc[tr])
-        imp=extract_encoded_importance(pipe)
-        imp["fold"]=fold
-        imp["validation_period"]=label
+    rows = []
+    X = dev[MODEL_FEATURES]
+    y = dev[TARGET]
+    base = RandomForestRegressor(
+        n_estimators=180, min_samples_leaf=2, max_features=0.8, random_state=seed, n_jobs=1
+    )
+    for fold, (tr, va, label) in enumerate(temporal_cv_splits(dev, n_splits), 1):
+        pipe = make_model_pipeline(clone(base), MODEL_FEATURES)
+        pipe.fit(X.iloc[tr], y.iloc[tr])
+        imp = extract_encoded_importance(pipe)
+        imp["fold"] = fold
+        imp["validation_period"] = label
         rows.append(imp)
-    return pd.concat(rows,ignore_index=True) if rows else pd.DataFrame(columns=["encoded_feature","importance","fold","validation_period"])
+    return (
+        pd.concat(rows, ignore_index=True)
+        if rows
+        else pd.DataFrame(columns=["encoded_feature", "importance", "fold", "validation_period"])
+    )
 
 
 def branch_b_error_slices(pred_df: pd.DataFrame) -> pd.DataFrame:
     """Single long-form error-slice table used by Branch-B Streamlit drill-down."""
-    rows=[]
-    temp=pred_df.copy()
-    temp["experience_band"]=pd.cut(temp["years_of_experience"],bins=[0,2,5,9,np.inf],
-                                    labels=["Entry (1-2)","Mid (3-5)","Senior (6-9)","Lead (10+)"],
-                                    include_lowest=True)
-    for col in ["job_category","country","remote_work","company_size","experience_band"]:
+    rows = []
+    temp = pred_df.copy()
+    temp["experience_band"] = pd.cut(
+        temp["years_of_experience"],
+        bins=[0, 2, 5, 9, np.inf],
+        labels=["Entry (1-2)", "Mid (3-5)", "Senior (6-9)", "Lead (10+)"],
+        include_lowest=True,
+    )
+    for col in ["job_category", "country", "remote_work", "company_size", "experience_band"]:
         if col not in temp:
             continue
-        g=temp.groupby(col,observed=True).agg(
-            records=("absolute_error_usd","size"),
-            MAE=("absolute_error_usd","mean"),
-            MedAE=("absolute_error_usd","median"),
-            actual_salary_mean=(TARGET,"mean"),
-            predicted_salary_mean=("predicted_salary_usd","mean"),
-        ).reset_index().rename(columns={col:"group_value"})
-        g.insert(0,"group_type",col)
+        g = (
+            temp.groupby(col, observed=True)
+            .agg(
+                records=("absolute_error_usd", "size"),
+                MAE=("absolute_error_usd", "mean"),
+                MedAE=("absolute_error_usd", "median"),
+                actual_salary_mean=(TARGET, "mean"),
+                predicted_salary_mean=("predicted_salary_usd", "mean"),
+            )
+            .reset_index()
+            .rename(columns={col: "group_value"})
+        )
+        g.insert(0, "group_type", col)
         rows.append(g)
-    return pd.concat(rows,ignore_index=True) if rows else pd.DataFrame()
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
 
-def encoded_correlations_train(dev: pd.DataFrame, features: list[str] | None = None) -> pd.DataFrame:
-    features=features or MODEL_FEATURES
-    prep=make_salary_preprocessor(features)
-    z=prep.fit_transform(dev[features])
-    names=prep.get_feature_names_out()
-    y=dev[TARGET].to_numpy(dtype=float)
-    rows=[]
-    for i,n in enumerate(names):
-        x=z[:,i].astype(float)
-        if np.nanstd(x)==0: r=0.0
-        else: r=float(np.corrcoef(x,y)[0,1])
-        rows.append({"encoded_feature":str(n),"pearson_r":r,"abs_r":abs(r)})
-    return pd.DataFrame(rows).sort_values("abs_r",ascending=False).reset_index(drop=True)
+def encoded_correlations_train(
+    dev: pd.DataFrame, features: list[str] | None = None
+) -> pd.DataFrame:
+    features = features or MODEL_FEATURES
+    prep = make_salary_preprocessor(features)
+    z = prep.fit_transform(dev[features])
+    names = prep.get_feature_names_out()
+    y = dev[TARGET].to_numpy(dtype=float)
+    rows = []
+    for i, n in enumerate(names):
+        x = z[:, i].astype(float)
+        if np.nanstd(x) == 0:
+            r = 0.0
+        else:
+            r = float(np.corrcoef(x, y)[0, 1])
+        rows.append({"encoded_feature": str(n), "pearson_r": r, "abs_r": abs(r)})
+    return pd.DataFrame(rows).sort_values("abs_r", ascending=False).reset_index(drop=True)
 
 
 class FamilyBalancedEncoder(BaseEstimator, TransformerMixin):
@@ -715,7 +1189,9 @@ class FamilyBalancedEncoder(BaseEstimator, TransformerMixin):
         for fam, (cats, nums) in self.family_specs_.items():
             trs = []
             if cats:
-                trs.append(("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cats))
+                trs.append(
+                    ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cats)
+                )
             if nums:
                 trs.append(("num", StandardScaler(), nums))
             ct = ColumnTransformer(
@@ -743,7 +1219,9 @@ class FamilyBalancedEncoder(BaseEstimator, TransformerMixin):
             self.feature_names_.append("Skills::skill_count_scaled")
         else:
             sc = None
-        self.family_dims_["Skills"] = (len(sk.vocabulary_) if sk is not None else 0) + (1 if sc is not None else 0)
+        self.family_dims_["Skills"] = (len(sk.vocabulary_) if sk is not None else 0) + (
+            1 if sc is not None else 0
+        )
         return self
 
     def transform_family_blocks(self, X, *, balanced: bool | None = None) -> dict[str, np.ndarray]:
@@ -756,7 +1234,13 @@ class FamilyBalancedEncoder(BaseEstimator, TransformerMixin):
         X = pd.DataFrame(X).copy() if not isinstance(X, pd.DataFrame) else X.copy()
         use_balance = self.balance if balanced is None else bool(balanced)
         blocks: dict[str, np.ndarray] = {}
-        for fam in ["Job Domain", "Experience & Education", "Company & Work Mode", "Geography", "Demand / Benefits"]:
+        for fam in [
+            "Job Domain",
+            "Experience & Education",
+            "Company & Work Mode",
+            "Geography",
+            "Demand / Benefits",
+        ]:
             arr = np.asarray(self.family_transformers_[fam].transform(X), dtype=float)
             if use_balance and arr.shape[1] > 0:
                 arr = arr / math.sqrt(arr.shape[1])
@@ -764,9 +1248,19 @@ class FamilyBalancedEncoder(BaseEstimator, TransformerMixin):
 
         skill_parts = []
         if "Skills" in self.family_transformers_:
-            skill_parts.append(np.asarray(self.family_transformers_["Skills"].transform(X[["required_skills"]]), dtype=float))
+            skill_parts.append(
+                np.asarray(
+                    self.family_transformers_["Skills"].transform(X[["required_skills"]]),
+                    dtype=float,
+                )
+            )
         if "Skills__count_scaler" in self.family_transformers_:
-            skill_parts.append(np.asarray(self.family_transformers_["Skills__count_scaler"].transform(X[["skill_count"]]), dtype=float))
+            skill_parts.append(
+                np.asarray(
+                    self.family_transformers_["Skills__count_scaler"].transform(X[["skill_count"]]),
+                    dtype=float,
+                )
+            )
         skills = np.hstack(skill_parts) if skill_parts else np.empty((len(X), 0), dtype=float)
         if use_balance and skills.shape[1] > 0:
             skills = skills / math.sqrt(skills.shape[1])
@@ -775,7 +1269,19 @@ class FamilyBalancedEncoder(BaseEstimator, TransformerMixin):
 
     def transform(self, X):
         blocks = self.transform_family_blocks(X, balanced=self.balance)
-        return np.hstack([blocks[f] for f in ["Job Domain", "Experience & Education", "Company & Work Mode", "Geography", "Demand / Benefits", "Skills"]])
+        return np.hstack(
+            [
+                blocks[f]
+                for f in [
+                    "Job Domain",
+                    "Experience & Education",
+                    "Company & Work Mode",
+                    "Geography",
+                    "Demand / Benefits",
+                    "Skills",
+                ]
+            ]
+        )
 
     def get_feature_names_out(self, input_features=None):
         return np.array(self.feature_names_, dtype=object)
@@ -794,10 +1300,10 @@ def _cluster_quality_band(silhouette: float) -> str:
 def _pairwise_stability(label_sets: list[np.ndarray]) -> float:
     if len(label_sets) < 2:
         return 1.0
-    vals=[]
+    vals = []
     for i in range(len(label_sets)):
-        for j in range(i+1,len(label_sets)):
-            vals.append(adjusted_rand_score(label_sets[i],label_sets[j]))
+        for j in range(i + 1, len(label_sets)):
+            vals.append(adjusted_rand_score(label_sets[i], label_sets[j]))
     return float(np.mean(vals)) if vals else 1.0
 
 
@@ -816,7 +1322,6 @@ def _pca_component_count(
     if max_components is not None:
         needed = min(needed, int(max_components))
     return min(needed, len(explained))
-
 
 
 def _encoded_family_name(encoded_feature: str) -> str:
@@ -935,9 +1440,9 @@ def _build_correlation_selected_space(
                 "family": _encoded_family_name(str(name)),
                 "variance_dev": float(variances[idx]) if np.isfinite(variances[idx]) else np.nan,
                 "selected": bool(selected),
-                "decision": "KEEP" if selected else (
-                    "DROP_CORRELATED" if reason is not None else "DROP_ZERO_VARIANCE"
-                ),
+                "decision": "KEEP"
+                if selected
+                else ("DROP_CORRELATED" if reason is not None else "DROP_ZERO_VARIANCE"),
                 "correlated_with_kept": str(names[reason[0]]) if reason is not None else "",
                 "pearson_r_with_kept": float(reason[1]) if reason is not None else np.nan,
                 "abs_r_with_kept": abs(float(reason[1])) if reason is not None else np.nan,
@@ -1051,14 +1556,12 @@ def _choose_feature_space_option(
         fallback = "feature_space_eligibility_relaxed"
 
     best_sil = float(eligible["silhouette"].max())
-    eligible["within_option_tolerance"] = (
-        eligible["silhouette"] >= best_sil - float(silhouette_tolerance)
+    eligible["within_option_tolerance"] = eligible["silhouette"] >= best_sil - float(
+        silhouette_tolerance
     )
     shortlist = eligible[eligible["within_option_tolerance"]].copy()
     shortlist["option_preference"] = (
-        shortlist["option_id"]
-        .map({"O2_CORRELATION": 0, "O1_PCA": 1})
-        .fillna(9)
+        shortlist["option_id"].map({"O2_CORRELATION": 0, "O1_PCA": 1}).fillna(9)
     )
     shortlist = shortlist.sort_values(
         [
@@ -1073,9 +1576,7 @@ def _choose_feature_space_option(
     )
 
     selected_id = str(shortlist.iloc[0]["option_id"])
-    df["within_option_tolerance"] = (
-        df["silhouette"] >= best_sil - float(silhouette_tolerance)
-    )
+    df["within_option_tolerance"] = df["silhouette"] >= best_sil - float(silhouette_tolerance)
     df["selected_option"] = df["option_id"].astype(str).eq(selected_id)
 
     selected = df[df["selected_option"]].iloc[0]
@@ -1084,7 +1585,9 @@ def _choose_feature_space_option(
         others.sort_values(
             ["eligible", "silhouette", "resample_stability_ari_mean"],
             ascending=[False, False, False],
-        ).iloc[0].to_dict()
+        )
+        .iloc[0]
+        .to_dict()
         if len(others)
         else {}
     )
@@ -1227,9 +1730,7 @@ def run_segmentation(
         all_candidates.append(cand_i)
         selected_dev_labels[rep_id] = labels_dev_i
 
-        used_i = rep_i.component_summary[
-            rep_i.component_summary["used_for_clustering"]
-        ].copy()
+        used_i = rep_i.component_summary[rep_i.component_summary["used_for_clustering"]].copy()
         if rep_id == "R1_FAMILYWISE_PCA":
             fam_var = used_i.groupby("family")["explained_variance_ratio"].sum()
             variance_summary = float(fam_var.mean()) if len(fam_var) else np.nan
@@ -1345,9 +1846,7 @@ def run_segmentation(
                 "k": int(o1_summary["k"]),
                 "silhouette": float(o1_summary["silhouette"]),
                 "stability_ari": float(o1_summary["stability_ari"]),
-                "resample_stability_ari_mean": float(
-                    o1_summary["resample_stability_ari_mean"]
-                ),
+                "resample_stability_ari_mean": float(o1_summary["resample_stability_ari_mean"]),
                 "resample_stability_ari_p10": float(
                     o1_summary.get("resample_stability_ari_p10", np.nan)
                 ),
@@ -1369,9 +1868,7 @@ def run_segmentation(
                 "k": int(o2_summary["k"]),
                 "silhouette": float(o2_summary["silhouette"]),
                 "stability_ari": float(o2_summary["stability_ari"]),
-                "resample_stability_ari_mean": float(
-                    o2_summary["resample_stability_ari_mean"]
-                ),
+                "resample_stability_ari_mean": float(o2_summary["resample_stability_ari_mean"]),
                 "resample_stability_ari_p10": float(
                     o2_summary.get("resample_stability_ari_p10", np.nan)
                 ),
@@ -1416,9 +1913,7 @@ def run_segmentation(
         if o1_rep_id == "R1_FAMILYWISE_PCA":
             fam_var = used.groupby("family")["explained_variance_ratio"].sum()
             variance_captured = float(fam_var.mean()) if len(fam_var) else np.nan
-            visual_var = float(
-                o1_rep.transformer["visualizer"].explained_variance_ratio_[:2].sum()
-            )
+            visual_var = float(o1_rep.transformer["visualizer"].explained_variance_ratio_[:2].sum())
             clustering_space = (
                 f"Family-wise PCA latent concatenation "
                 f"({o1_rep.dev_matrix.shape[1]} retained latent dimensions)"
@@ -1512,9 +2007,7 @@ def run_segmentation(
                     "family": "CORRELATION_SELECTED_X",
                     "retained_components": 0,
                     "retained_variance": np.nan,
-                    "selected_encoded_features": int(
-                        o2["selected_encoded_features"]
-                    ),
+                    "selected_encoded_features": int(o2["selected_encoded_features"]),
                 }
             ]
         )
@@ -1543,9 +2036,7 @@ def run_segmentation(
         )
         .reset_index()
     )
-    profiles["share_pct"] = (
-        100 * profiles["records"] / profiles["records"].sum()
-    )
+    profiles["share_pct"] = 100 * profiles["records"] / profiles["records"].sum()
 
     # Shared family-balance diagnostics.
     blocks_raw = encoder.transform_family_blocks(
@@ -1568,18 +2059,12 @@ def run_segmentation(
                 "balance_weight": 1.0 / math.sqrt(dim) if dim else 1.0,
                 "frobenius_norm_before": float(np.linalg.norm(raw, ord="fro")),
                 "frobenius_norm_after": float(np.linalg.norm(bal, ord="fro")),
-                "mean_row_l2_before": (
-                    float(np.mean(np.linalg.norm(raw, axis=1))) if dim else 0.0
-                ),
-                "mean_row_l2_after": (
-                    float(np.mean(np.linalg.norm(bal, axis=1))) if dim else 0.0
-                ),
+                "mean_row_l2_before": (float(np.mean(np.linalg.norm(raw, axis=1))) if dim else 0.0),
+                "mean_row_l2_after": (float(np.mean(np.linalg.norm(bal, axis=1))) if dim else 0.0),
             }
         )
     family_diag = pd.DataFrame(family_rows)
-    family_dims = family_diag[
-        ["family", "encoded_dimensions", "balance_weight"]
-    ].copy()
+    family_dims = family_diag[["family", "encoded_dimensions", "balance_weight"]].copy()
 
     # Official candidate assignment evidence.
     official_candidates = official_candidates_full.drop(
@@ -1605,18 +2090,14 @@ def run_segmentation(
         if official_ev["eligible"].any()
         else float(official_ev["silhouette"].max())
     )
-    official_ev["within_primary_tolerance"] = (
-        official_ev["silhouette"]
-        >= (_best_official_sil - float(silhouette_tolerance))
+    official_ev["within_primary_tolerance"] = official_ev["silhouette"] >= (
+        _best_official_sil - float(silhouette_tolerance)
     )
-    official_ev["selected"] = official_ev[
-        "selected_within_representation"
-    ].astype(bool)
+    official_ev["selected"] = official_ev["selected_within_representation"].astype(bool)
     official_ev["selection_score"] = (
         0.45 * official_ev["silhouette"].rank(pct=True)
         + 0.20 * official_ev["stability_ari"].fillna(-1).rank(pct=True)
-        + 0.20
-        * official_ev["resample_stability_ari_mean"].fillna(-1).rank(pct=True)
+        + 0.20 * official_ev["resample_stability_ari_mean"].fillna(-1).rank(pct=True)
         + 0.10 * official_ev["balance_entropy"].rank(pct=True)
         + 0.025 * official_ev["calinski_harabasz"].rank(pct=True)
         + 0.025
@@ -1630,8 +2111,7 @@ def run_segmentation(
     # O1 dependency evidence remains useful even when O2 wins.
     def _pair(a: str, b: str) -> float:
         q = pairwise_ari[
-            (pairwise_ari["representation_a"] == a)
-            & (pairwise_ari["representation_b"] == b)
+            (pairwise_ari["representation_a"] == a) & (pairwise_ari["representation_b"] == b)
         ]
         return float(q.iloc[0]["ari"]) if len(q) else np.nan
 
@@ -1688,9 +2168,7 @@ def run_segmentation(
         "selected_k": int(selected_row.k),
         "selected_silhouette": float(selected_row.silhouette),
         "selected_stability_ari": (
-            float(selected_row.stability_ari)
-            if pd.notna(selected_row.stability_ari)
-            else np.nan
+            float(selected_row.stability_ari) if pd.notna(selected_row.stability_ari) else np.nan
         ),
         "selected_resample_stability_ari_mean": (
             float(selected_row.resample_stability_ari_mean)
@@ -1703,9 +2181,7 @@ def run_segmentation(
         "resample_stability_threshold": float(resample_stability_min),
         "minimum_cluster_share_threshold": float(min_cluster_share),
         "silhouette_tolerance": float(silhouette_tolerance),
-        "representation_silhouette_tolerance": float(
-            representation_silhouette_tolerance
-        ),
+        "representation_silhouette_tolerance": float(representation_silhouette_tolerance),
         "correlation_threshold": float(correlation_threshold),
         "cross_option_ari": cross_option_ari,
         "decision_note": option_decision["observed"],
@@ -1715,9 +2191,7 @@ def run_segmentation(
 
     meta = {
         "feature_space_option_id": selected_option_id,
-        "feature_space_option_label": official_rationale[
-            "selected_feature_space_label"
-        ],
+        "feature_space_option_label": official_rationale["selected_feature_space_label"],
         "representation_id": official_representation_id,
         "representation_label": official_label,
         "o1_selected_representation": o1_rep_id,
@@ -1730,9 +2204,7 @@ def run_segmentation(
         "k": int(selected_row.k),
         "silhouette": float(selected_row.silhouette),
         "stability_ari": (
-            float(selected_row.stability_ari)
-            if pd.notna(selected_row.stability_ari)
-            else np.nan
+            float(selected_row.stability_ari) if pd.notna(selected_row.stability_ari) else np.nan
         ),
         "resample_stability_ari_mean": (
             float(selected_row.resample_stability_ari_mean)
@@ -1745,15 +2217,11 @@ def run_segmentation(
         "clustering_dimensions": int(official_matrix_dev.shape[1]),
         "pca_components_total": int(len(comp)),
         "pca_components_for_clustering": (
-            int(official_matrix_dev.shape[1])
-            if selected_option_id == "O1_PCA"
-            else 0
+            int(official_matrix_dev.shape[1]) if selected_option_id == "O1_PCA" else 0
         ),
         "pca_variance_threshold": float(pca_variance_threshold),
         "clustering_variance_captured": (
-            float(variance_captured)
-            if pd.notna(variance_captured)
-            else np.nan
+            float(variance_captured) if pd.notna(variance_captured) else np.nan
         ),
         "visualization_components": 2,
         "visualization_variance_captured": float(visual_var),
@@ -1762,9 +2230,7 @@ def run_segmentation(
         "fit_rows": int(len(dev)),
         "target_used_for_clustering": False,
         "correlation_threshold": float(correlation_threshold),
-        "o2_selected_encoded_features": int(
-            o2["selected_encoded_features"]
-        ),
+        "o2_selected_encoded_features": int(o2["selected_encoded_features"]),
         "o2_encoded_features_before": int(o2["encoded_features_before"]),
         "selection_policy": (
             "O1 PCA family (R0-R4 internal robustness) vs O2 correlation-selected X "
@@ -1791,8 +2257,7 @@ def run_segmentation(
     representation_card = {
         "observed": ablation_insight["observed"],
         "interpretation": (
-            "This is the internal O1 PCA robustness study. "
-            + ablation_insight["interpretation"]
+            "This is the internal O1 PCA robustness study. " + ablation_insight["interpretation"]
         ),
         "action": ablation_insight["action"],
         "tone": "info",
@@ -1829,17 +2294,12 @@ def run_segmentation(
         cs = r.component_summary.copy()
         if rid == "R1_FAMILYWISE_PCA":
             for fam, grp in cs.groupby("family"):
-                ratios = (
-                    grp.sort_values("component_number")[
-                        "explained_variance_ratio"
-                    ].to_numpy(float)
+                ratios = grp.sort_values("component_number")["explained_variance_ratio"].to_numpy(
+                    float
                 )
                 cap = (
                     int(grp["family_component_cap"].dropna().iloc[0])
-                    if (
-                        "family_component_cap" in grp
-                        and grp["family_component_cap"].notna().any()
-                    )
+                    if ("family_component_cap" in grp and grp["family_component_cap"].notna().any())
                     else None
                 )
                 for thr in (0.80, 0.85, 0.90):
@@ -1851,15 +2311,11 @@ def run_segmentation(
                             "variance_threshold": thr,
                             "retained_components": int(n_thr),
                             "variance_retained": float(ratios[:n_thr].sum()),
-                            "cap_reached_before_target": bool(
-                                ratios[:n_thr].sum() < thr - 1e-12
-                            ),
+                            "cap_reached_before_target": bool(ratios[:n_thr].sum() < thr - 1e-12),
                         }
                     )
         else:
-            grp = cs[cs["family"] == "GLOBAL"].sort_values(
-                "component_number"
-            )
+            grp = cs[cs["family"] == "GLOBAL"].sort_values("component_number")
             ratios = grp["explained_variance_ratio"].to_numpy(float)
             for thr in (0.80, 0.85, 0.90):
                 n_thr = _pca_component_count(
@@ -1875,9 +2331,7 @@ def run_segmentation(
                         "variance_threshold": thr,
                         "retained_components": int(n_thr),
                         "variance_retained": float(ratios[:n_thr].sum()),
-                        "cap_reached_before_target": bool(
-                            ratios[:n_thr].sum() < thr - 1e-12
-                        ),
+                        "cap_reached_before_target": bool(ratios[:n_thr].sum() < thr - 1e-12),
                     }
                 )
     representation_pca_sensitivity = pd.DataFrame(sensitivity_rows)
@@ -1899,9 +2353,7 @@ def run_segmentation(
         "option_label",
         "O2 — Correlation-based feature selection",
     )
-    o2_option_candidates["internal_representation"] = (
-        "CORRELATION_SELECTED_X"
-    )
+    o2_option_candidates["internal_representation"] = "CORRELATION_SELECTED_X"
     feature_space_candidate_metrics = pd.concat(
         [o1_option_candidates, o2_option_candidates],
         ignore_index=True,
@@ -1961,9 +2413,7 @@ def run_segmentation(
         "family_dimensions": family_dims,
         "family_balance_diagnostics": family_diag,
         "pca_variance": comp,
-        "cluster_selection_summary": option_summary[
-            option_summary["selected_option"]
-        ].copy(),
+        "cluster_selection_summary": option_summary[option_summary["selected_option"]].copy(),
         # New O1-vs-O2 evidence
         "feature_space_option_summary": option_summary,
         "feature_space_candidate_metrics": feature_space_candidate_metrics,
@@ -1994,45 +2444,39 @@ def run_segmentation(
         "representation_pca_sensitivity": representation_pca_sensitivity,
         "selected_representation_family_pca_summary": selected_family_pca_summary,
         "representation_resample_stability_runs": (
-            pd.concat(all_resample, ignore_index=True)
-            if all_resample
-            else pd.DataFrame()
+            pd.concat(all_resample, ignore_index=True) if all_resample else pd.DataFrame()
         ),
         "representation_selected_assignments": pd.DataFrame(
             {
                 "record_id": np.arange(1, len(dev) + 1),
-                **{
-                    rid: labs
-                    for rid, labs in selected_dev_labels.items()
-                },
+                **{rid: labs for rid, labs in selected_dev_labels.items()},
             }
         ),
         "feature_dependency_summary": dep,
         **extra_evidence,
     }
 
-    return bundle, tables, {
-        **meta,
-        "rationale": official_rationale,
-        "representation_decision": ablation_insight,
-        "feature_space_decision": option_decision,
-        "insights": insights,
-    }
+    return (
+        bundle,
+        tables,
+        {
+            **meta,
+            "rationale": official_rationale,
+            "representation_decision": ablation_insight,
+            "feature_space_decision": option_decision,
+            "insights": insights,
+        },
+    )
+
 
 def transform_to_cluster_space(
     segmentation_bundle: dict[str, Any],
     df: pd.DataFrame,
 ) -> np.ndarray:
     """Transform prepared rows into the frozen official Branch-A feature space."""
-    required = [
-        c
-        for c in SEGMENTATION_FEATURES
-        if c not in df.columns
-    ]
+    required = [c for c in SEGMENTATION_FEATURES if c not in df.columns]
     if required:
-        raise ValueError(
-            f"Segmentation inference missing canonical fields: {required}"
-        )
+        raise ValueError(f"Segmentation inference missing canonical fields: {required}")
 
     transformer = segmentation_bundle["representation_transformer"]
     kind = str(transformer.get("kind", ""))
@@ -2066,25 +2510,40 @@ def transform_to_cluster_space(
         )
     return X
 
+
 def predict_segments(segmentation_bundle: dict[str, Any], df: pd.DataFrame) -> np.ndarray:
-    return segmentation_bundle["model"].predict(
-        transform_to_cluster_space(segmentation_bundle, df)
-    ).astype(int)
+    return (
+        segmentation_bundle["model"]
+        .predict(transform_to_cluster_space(segmentation_bundle, df))
+        .astype(int)
+    )
 
 
-def tune_random_forest_manual_steps(dev: pd.DataFrame, n_splits:int=5, seed:int=42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def tune_random_forest_manual_steps(
+    dev: pd.DataFrame, n_splits: int = 5, seed: int = 42
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     # Bước 1: Initial Grid Search với các bộ thông số mẫu bao phủ 4 thông số chính
-    configs=[
-        {"n_estimators":300,"min_samples_leaf":2,"max_features":0.7,"max_depth":20},
-        {"n_estimators":100,"min_samples_leaf":2,"max_features":0.8,"max_depth":None},
-        {"n_estimators":80,"min_samples_leaf":1,"max_features":0.8,"max_depth":None},
-        {"n_estimators":200,"min_samples_leaf":1,"max_features":0.7,"max_depth":20},
+    configs = [
+        {"n_estimators": 300, "min_samples_leaf": 2, "max_features": 0.7, "max_depth": 20},
+        {"n_estimators": 100, "min_samples_leaf": 2, "max_features": 0.8, "max_depth": None},
+        {"n_estimators": 80, "min_samples_leaf": 1, "max_features": 0.8, "max_depth": None},
+        {"n_estimators": 200, "min_samples_leaf": 1, "max_features": 0.7, "max_depth": 20},
     ]
-    rows1=[]
-    for i,p in enumerate(configs,1):
-        model=RandomForestRegressor(random_state=seed,n_jobs=-1,**p)
-        _,s=evaluate_model_cv(dev,MODEL_FEATURES,f"RF tune {i}",model,n_splits)
-        rows1.append({"candidate":i,**p,"CV_R2":s["R2_mean"],"CV_MAE":s["MAE_mean"],"CV_MAE_SD":s["MAE_std"],"CV_RMSE":s["RMSE_mean"],"CV_MedAE":s["MedAE_mean"]})
+    rows1 = []
+    for i, p in enumerate(configs, 1):
+        model = RandomForestRegressor(random_state=seed, n_jobs=-1, **p)
+        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF tune {i}", model, n_splits)
+        rows1.append(
+            {
+                "candidate": i,
+                **p,
+                "CV_R2": s["R2_mean"],
+                "CV_MAE": s["MAE_mean"],
+                "CV_MAE_SD": s["MAE_std"],
+                "CV_RMSE": s["RMSE_mean"],
+                "CV_MedAE": s["MedAE_mean"],
+            }
+        )
     df1 = pd.DataFrame(rows1).sort_values("CV_R2", ascending=False).reset_index(drop=True)
 
     # Bước 2: Thông số 1 — Tinh chỉnh n_estimators (giữ nguyên min_samples_leaf, max_features, max_depth từ Bước 1)
@@ -2093,9 +2552,28 @@ def tune_random_forest_manual_steps(dev: pd.DataFrame, n_splits:int=5, seed:int=
     n_vals = [50, 100, 150, 200, 250, 300]
     rows2 = []
     for n in n_vals:
-        model=RandomForestRegressor(n_estimators=n, min_samples_leaf=int(best_init.min_samples_leaf), max_features=float(best_init.max_features), max_depth=depth_val, random_state=seed, n_jobs=-1)
-        _,s=evaluate_model_cv(dev,MODEL_FEATURES,f"RF n_{n}",model,n_splits)
-        rows2.append({"n_estimators":n,"min_samples_leaf":int(best_init.min_samples_leaf),"max_features":float(best_init.max_features),"max_depth":best_init.max_depth,"CV_R2":s["R2_mean"],"CV_MAE":s["MAE_mean"],"CV_MAE_SD":s["MAE_std"],"CV_RMSE":s["RMSE_mean"],"CV_MedAE":s["MedAE_mean"]})
+        model = RandomForestRegressor(
+            n_estimators=n,
+            min_samples_leaf=int(best_init.min_samples_leaf),
+            max_features=float(best_init.max_features),
+            max_depth=depth_val,
+            random_state=seed,
+            n_jobs=-1,
+        )
+        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF n_{n}", model, n_splits)
+        rows2.append(
+            {
+                "n_estimators": n,
+                "min_samples_leaf": int(best_init.min_samples_leaf),
+                "max_features": float(best_init.max_features),
+                "max_depth": best_init.max_depth,
+                "CV_R2": s["R2_mean"],
+                "CV_MAE": s["MAE_mean"],
+                "CV_MAE_SD": s["MAE_std"],
+                "CV_RMSE": s["RMSE_mean"],
+                "CV_MedAE": s["MedAE_mean"],
+            }
+        )
     df2 = pd.DataFrame(rows2).sort_values("CV_R2", ascending=False).reset_index(drop=True)
 
     # Bước 3: Thông số 2 — Tinh chỉnh max_depth (chọn n*=200 từ Bước 2, giữ nguyên các tham số còn lại)
@@ -2103,10 +2581,29 @@ def tune_random_forest_manual_steps(dev: pd.DataFrame, n_splits:int=5, seed:int=
     depth_vals = [10, 15, 20, 25, 30, None]
     rows3 = []
     for d in depth_vals:
-        model=RandomForestRegressor(n_estimators=best_n, min_samples_leaf=int(best_init.min_samples_leaf), max_features=float(best_init.max_features), max_depth=d, random_state=seed, n_jobs=-1)
-        _,s=evaluate_model_cv(dev,MODEL_FEATURES,f"RF depth_{d}",model,n_splits)
+        model = RandomForestRegressor(
+            n_estimators=best_n,
+            min_samples_leaf=int(best_init.min_samples_leaf),
+            max_features=float(best_init.max_features),
+            max_depth=d,
+            random_state=seed,
+            n_jobs=-1,
+        )
+        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF depth_{d}", model, n_splits)
         depth_str = "None" if d is None else str(d)
-        rows3.append({"n_estimators":best_n,"min_samples_leaf":int(best_init.min_samples_leaf),"max_features":float(best_init.max_features),"max_depth":depth_str,"CV_R2":s["R2_mean"],"CV_MAE":s["MAE_mean"],"CV_MAE_SD":s["MAE_std"],"CV_RMSE":s["RMSE_mean"],"CV_MedAE":s["MedAE_mean"]})
+        rows3.append(
+            {
+                "n_estimators": best_n,
+                "min_samples_leaf": int(best_init.min_samples_leaf),
+                "max_features": float(best_init.max_features),
+                "max_depth": depth_str,
+                "CV_R2": s["R2_mean"],
+                "CV_MAE": s["MAE_mean"],
+                "CV_MAE_SD": s["MAE_std"],
+                "CV_RMSE": s["RMSE_mean"],
+                "CV_MedAE": s["MedAE_mean"],
+            }
+        )
     df3 = pd.DataFrame(rows3).sort_values("CV_R2", ascending=False).reset_index(drop=True)
 
     # Bước 4: Thông số 3 — Tinh chỉnh min_samples_leaf (cố định n*=200, depth*=20, max_features=0.7)
@@ -2114,9 +2611,28 @@ def tune_random_forest_manual_steps(dev: pd.DataFrame, n_splits:int=5, seed:int=
     leaf_vals = [1, 2, 4, 8]
     rows4 = []
     for leaf in leaf_vals:
-        model=RandomForestRegressor(n_estimators=best_n, min_samples_leaf=leaf, max_features=float(best_init.max_features), max_depth=best_d_val, random_state=seed, n_jobs=-1)
-        _,s=evaluate_model_cv(dev,MODEL_FEATURES,f"RF leaf_{leaf}",model,n_splits)
-        rows4.append({"n_estimators":best_n,"min_samples_leaf":leaf,"max_features":float(best_init.max_features),"max_depth":best_d_val,"CV_R2":s["R2_mean"],"CV_MAE":s["MAE_mean"],"CV_MAE_SD":s["MAE_std"],"CV_RMSE":s["RMSE_mean"],"CV_MedAE":s["MedAE_mean"]})
+        model = RandomForestRegressor(
+            n_estimators=best_n,
+            min_samples_leaf=leaf,
+            max_features=float(best_init.max_features),
+            max_depth=best_d_val,
+            random_state=seed,
+            n_jobs=-1,
+        )
+        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF leaf_{leaf}", model, n_splits)
+        rows4.append(
+            {
+                "n_estimators": best_n,
+                "min_samples_leaf": leaf,
+                "max_features": float(best_init.max_features),
+                "max_depth": best_d_val,
+                "CV_R2": s["R2_mean"],
+                "CV_MAE": s["MAE_mean"],
+                "CV_MAE_SD": s["MAE_std"],
+                "CV_RMSE": s["RMSE_mean"],
+                "CV_MedAE": s["MedAE_mean"],
+            }
+        )
     df4 = pd.DataFrame(rows4).sort_values("CV_R2", ascending=False).reset_index(drop=True)
     best_leaf = int(df4.iloc[0].min_samples_leaf)
 
@@ -2124,78 +2640,202 @@ def tune_random_forest_manual_steps(dev: pd.DataFrame, n_splits:int=5, seed:int=
     feat_vals = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     rows5 = []
     for feat in feat_vals:
-        model=RandomForestRegressor(n_estimators=best_n, min_samples_leaf=best_leaf, max_features=feat, max_depth=best_d_val, random_state=seed, n_jobs=-1)
-        _,s=evaluate_model_cv(dev,MODEL_FEATURES,f"RF feat_{feat}",model,n_splits)
-        rows5.append({"n_estimators":best_n,"min_samples_leaf":best_leaf,"max_features":feat,"max_depth":best_d_val,"CV_R2":s["R2_mean"],"CV_MAE":s["MAE_mean"],"CV_MAE_SD":s["MAE_std"],"CV_RMSE":s["RMSE_mean"],"CV_MedAE":s["MedAE_mean"]})
+        model = RandomForestRegressor(
+            n_estimators=best_n,
+            min_samples_leaf=best_leaf,
+            max_features=feat,
+            max_depth=best_d_val,
+            random_state=seed,
+            n_jobs=-1,
+        )
+        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF feat_{feat}", model, n_splits)
+        rows5.append(
+            {
+                "n_estimators": best_n,
+                "min_samples_leaf": best_leaf,
+                "max_features": feat,
+                "max_depth": best_d_val,
+                "CV_R2": s["R2_mean"],
+                "CV_MAE": s["MAE_mean"],
+                "CV_MAE_SD": s["MAE_std"],
+                "CV_RMSE": s["RMSE_mean"],
+                "CV_MedAE": s["MedAE_mean"],
+            }
+        )
     df5 = pd.DataFrame(rows5).sort_values("CV_R2", ascending=False).reset_index(drop=True)
     best_feat = float(df5.iloc[0].max_features)
 
     # Bảng tổng kết 4 thông số đã tối ưu
     summary_rows = [
-        {"hyperparameter": "1. n_estimators", "search_space": "[50, 100, 150, 200, 250, 300]", "optimal_value": str(best_n), "best_cv_r2": float(df2.iloc[0].CV_R2), "best_cv_mae": float(df2.iloc[0].CV_MAE), "tuning_rationale": "Sufficient ensemble variance reduction; stabilizes at n=200 with peak R2 0.824"},
-        {"hyperparameter": "2. max_depth", "search_space": "[10, 15, 20, 25, 30, None]", "optimal_value": str(best_d_val), "best_cv_r2": float(df3.loc[df3.max_depth=='20'].iloc[0].CV_R2), "best_cv_mae": float(df3.loc[df3.max_depth=='20'].iloc[0].CV_MAE), "tuning_rationale": "Depth 20 prevents tree bloat and overfitting while matching unconstrained depth R2"},
-        {"hyperparameter": "3. min_samples_leaf", "search_space": "[1, 2, 4, 8]", "optimal_value": str(best_leaf), "best_cv_r2": float(df4.iloc[0].CV_R2), "best_cv_mae": float(df4.iloc[0].CV_MAE), "tuning_rationale": "Leaf=1 captures sharp compensation boundaries without smoothing away salary signals"},
-        {"hyperparameter": "4. max_features", "search_space": "[0.5, 0.6, 0.7, 0.8, 0.9, 1.0]", "optimal_value": str(best_feat), "best_cv_r2": float(df5.iloc[0].CV_R2), "best_cv_mae": float(df5.iloc[0].CV_MAE), "tuning_rationale": "0.7 subsampling induces optimal tree diversity and prevents dominant feature saturation"},
+        {
+            "hyperparameter": "1. n_estimators",
+            "search_space": "[50, 100, 150, 200, 250, 300]",
+            "optimal_value": str(best_n),
+            "best_cv_r2": float(df2.iloc[0].CV_R2),
+            "best_cv_mae": float(df2.iloc[0].CV_MAE),
+            "tuning_rationale": "Sufficient ensemble variance reduction; stabilizes at n=200 with peak R2 0.824",
+        },
+        {
+            "hyperparameter": "2. max_depth",
+            "search_space": "[10, 15, 20, 25, 30, None]",
+            "optimal_value": str(best_d_val),
+            "best_cv_r2": float(df3.loc[df3.max_depth == "20"].iloc[0].CV_R2),
+            "best_cv_mae": float(df3.loc[df3.max_depth == "20"].iloc[0].CV_MAE),
+            "tuning_rationale": "Depth 20 prevents tree bloat and overfitting while matching unconstrained depth R2",
+        },
+        {
+            "hyperparameter": "3. min_samples_leaf",
+            "search_space": "[1, 2, 4, 8]",
+            "optimal_value": str(best_leaf),
+            "best_cv_r2": float(df4.iloc[0].CV_R2),
+            "best_cv_mae": float(df4.iloc[0].CV_MAE),
+            "tuning_rationale": "Leaf=1 captures sharp compensation boundaries without smoothing away salary signals",
+        },
+        {
+            "hyperparameter": "4. max_features",
+            "search_space": "[0.5, 0.6, 0.7, 0.8, 0.9, 1.0]",
+            "optimal_value": str(best_feat),
+            "best_cv_r2": float(df5.iloc[0].CV_R2),
+            "best_cv_mae": float(df5.iloc[0].CV_MAE),
+            "tuning_rationale": "0.7 subsampling induces optimal tree diversity and prevents dominant feature saturation",
+        },
     ]
     df_sum = pd.DataFrame(summary_rows)
 
     return df1, df2, df3, df4, df5, df_sum
 
 
-def tune_random_forest(dev: pd.DataFrame, n_splits:int=5, seed:int=42) -> pd.DataFrame:
+def tune_random_forest(dev: pd.DataFrame, n_splits: int = 5, seed: int = 42) -> pd.DataFrame:
     df1, *_ = tune_random_forest_manual_steps(dev, n_splits, seed)
     return df1
 
 
-def final_model_from_selection(best_family:str,tuning:pd.DataFrame|None,seed:int=42) -> BaseEstimator:
-    if best_family=="Random Forest" and tuning is not None and len(tuning):
-        r=tuning.iloc[0]
-        depth=None if pd.isna(r["max_depth"]) else int(r["max_depth"])
-        return RandomForestRegressor(n_estimators=int(r.n_estimators),min_samples_leaf=int(r.min_samples_leaf),max_features=float(r.max_features),max_depth=depth,random_state=seed,n_jobs=1)
+def final_model_from_selection(
+    best_family: str, tuning: pd.DataFrame | None, seed: int = 42
+) -> BaseEstimator:
+    if best_family == "Random Forest" and tuning is not None and len(tuning):
+        r = tuning.iloc[0]
+        depth = None if pd.isna(r["max_depth"]) else int(r["max_depth"])
+        return RandomForestRegressor(
+            n_estimators=int(r.n_estimators),
+            min_samples_leaf=int(r.min_samples_leaf),
+            max_features=float(r.max_features),
+            max_depth=depth,
+            random_state=seed,
+            n_jobs=1,
+        )
     return clone(candidate_models(seed)[best_family])
 
 
 def extract_encoded_importance(pipe: Pipeline) -> pd.DataFrame:
-    prep=pipe.named_steps["preprocess"]; model=pipe.named_steps["model"]
-    names=prep.get_feature_names_out()
-    if hasattr(model,"feature_importances_"):
-        vals=np.asarray(model.feature_importances_,dtype=float)
-    elif hasattr(model,"coef_"):
-        vals=np.abs(np.asarray(model.coef_).ravel())
+    prep = pipe.named_steps["preprocess"]
+    model = pipe.named_steps["model"]
+    names = prep.get_feature_names_out()
+    if hasattr(model, "feature_importances_"):
+        vals = np.asarray(model.feature_importances_, dtype=float)
+    elif hasattr(model, "coef_"):
+        vals = np.abs(np.asarray(model.coef_).ravel())
     else:
-        vals=np.zeros(len(names))
-    return pd.DataFrame({"encoded_feature":names,"importance":vals}).sort_values("importance",ascending=False).reset_index(drop=True)
+        vals = np.zeros(len(names))
+    return (
+        pd.DataFrame({"encoded_feature": names, "importance": vals})
+        .sort_values("importance", ascending=False)
+        .reset_index(drop=True)
+    )
 
 
-def finalize_salary_model(dev: pd.DataFrame,test:pd.DataFrame,model:BaseEstimator,seed:int=42) -> tuple[Pipeline,dict[str,Any],dict[str,pd.DataFrame]]:
-    pipe=make_model_pipeline(model,MODEL_FEATURES)
-    pipe.fit(dev[MODEL_FEATURES],dev[TARGET])
-    pred=np.asarray(pipe.predict(test[MODEL_FEATURES]),dtype=float)
-    met=regression_metrics(test[TARGET],pred)
-    abs_err=np.abs(test[TARGET].to_numpy(dtype=float)-pred)
-    met["prediction_interval_abs_error_q90"]=float(np.quantile(abs_err,0.90))
-    pred_df=test.copy()
-    pred_df["predicted_salary_usd"]=pred
-    pred_df["residual_usd"]=test[TARGET].to_numpy(dtype=float)-pred
-    pred_df["absolute_error_usd"]=abs_err
-    pi=permutation_importance(pipe,test[MODEL_FEATURES],test[TARGET],scoring="neg_mean_absolute_error",n_repeats=12,random_state=seed,n_jobs=1)
-    raw_imp=pd.DataFrame({"feature":MODEL_FEATURES,"permutation_importance_mae_increase":pi.importances_mean,"importance_std":pi.importances_std}).sort_values("permutation_importance_mae_increase",ascending=False).reset_index(drop=True)
-    enc_imp=extract_encoded_importance(pipe)
-    return pipe,met,{"locked_test_predictions":pred_df,"raw_permutation_importance":raw_imp,"encoded_importance":enc_imp}
+def finalize_salary_model(
+    dev: pd.DataFrame, test: pd.DataFrame, model: BaseEstimator, seed: int = 42
+) -> tuple[Pipeline, dict[str, Any], dict[str, pd.DataFrame]]:
+    pipe = make_model_pipeline(model, MODEL_FEATURES)
+    pipe.fit(dev[MODEL_FEATURES], dev[TARGET])
+    pred = np.asarray(pipe.predict(test[MODEL_FEATURES]), dtype=float)
+    met = regression_metrics(test[TARGET], pred)
+    abs_err = np.abs(test[TARGET].to_numpy(dtype=float) - pred)
+    met["prediction_interval_abs_error_q90"] = float(np.quantile(abs_err, 0.90))
+    pred_df = test.copy()
+    pred_df["predicted_salary_usd"] = pred
+    pred_df["residual_usd"] = test[TARGET].to_numpy(dtype=float) - pred
+    pred_df["absolute_error_usd"] = abs_err
+    pi = permutation_importance(
+        pipe,
+        test[MODEL_FEATURES],
+        test[TARGET],
+        scoring="neg_mean_absolute_error",
+        n_repeats=12,
+        random_state=seed,
+        n_jobs=1,
+    )
+    raw_imp = (
+        pd.DataFrame(
+            {
+                "feature": MODEL_FEATURES,
+                "permutation_importance_mae_increase": pi.importances_mean,
+                "importance_std": pi.importances_std,
+            }
+        )
+        .sort_values("permutation_importance_mae_increase", ascending=False)
+        .reset_index(drop=True)
+    )
+    enc_imp = extract_encoded_importance(pipe)
+    return (
+        pipe,
+        met,
+        {
+            "locked_test_predictions": pred_df,
+            "raw_permutation_importance": raw_imp,
+            "encoded_importance": enc_imp,
+        },
+    )
 
 
-def metadata_from_pipeline(pipe:Pipeline,dev:pd.DataFrame,split_summary:dict[str,Any],metrics:dict[str,Any],model_name:str,selected_params:dict[str,Any],run_id:str) -> dict[str,Any]:
-    cats=["job_title","job_category","education_required","city","country","remote_work","company_size","industry"]
-    category_options={c:sorted(map(str,dev[c].dropna().unique())) for c in cats}
-    country_city_options={str(country): sorted(map(str, g["city"].dropna().unique())) for country, g in dev.groupby("country", observed=True)}
-    numeric_ranges={c:{"min":float(dev[c].min()),"max":float(dev[c].max()),"median":float(dev[c].median())} for c in ["years_of_experience","demand_score","benefits_score_10","skill_count"]}
-    vocab=sorted({t for v in dev["required_skills"] for t in normalize_skills(v)})
+def metadata_from_pipeline(
+    pipe: Pipeline,
+    dev: pd.DataFrame,
+    split_summary: dict[str, Any],
+    metrics: dict[str, Any],
+    model_name: str,
+    selected_params: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    cats = [
+        "job_title",
+        "job_category",
+        "education_required",
+        "city",
+        "country",
+        "remote_work",
+        "company_size",
+        "industry",
+    ]
+    category_options = {c: sorted(map(str, dev[c].dropna().unique())) for c in cats}
+    country_city_options = {
+        str(country): sorted(map(str, g["city"].dropna().unique()))
+        for country, g in dev.groupby("country", observed=True)
+    }
+    numeric_ranges = {
+        c: {
+            "min": float(dev[c].min()),
+            "max": float(dev[c].max()),
+            "median": float(dev[c].median()),
+        }
+        for c in ["years_of_experience", "demand_score", "benefits_score_10", "skill_count"]
+    }
+    vocab = sorted({t for v in dev["required_skills"] for t in normalize_skills(v)})
     return {
-        "run_id":run_id,"model_name":model_name,"target":TARGET,"model_features":MODEL_FEATURES,
-        "category_options":category_options,"country_city_options":country_city_options,"numeric_ranges":numeric_ranges,"skill_vocabulary":vocab,
-        "locked_test":split_summary,"locked_test_metrics":metrics,"prediction_interval_abs_error_q90":metrics["prediction_interval_abs_error_q90"],
-        "selected_hyperparameters":selected_params,
-        "limitations":[
+        "run_id": run_id,
+        "model_name": model_name,
+        "target": TARGET,
+        "model_features": MODEL_FEATURES,
+        "category_options": category_options,
+        "country_city_options": country_city_options,
+        "numeric_ranges": numeric_ranges,
+        "skill_vocabulary": vocab,
+        "locked_test": split_summary,
+        "locked_test_metrics": metrics,
+        "prediction_interval_abs_error_q90": metrics["prediction_interval_abs_error_q90"],
+        "selected_hyperparameters": selected_params,
+        "limitations": [
             "Dataset shows strong logical/synthetic artifacts; results are suitable for academic benchmarking, not causal salary economics.",
             "Feature importance indicates predictive reliance, not causality or fairness.",
             "The practical error band is empirical validation error, not a formal confidence interval.",
@@ -2204,35 +2844,64 @@ def metadata_from_pipeline(pipe:Pipeline,dev:pd.DataFrame,split_summary:dict[str
     }
 
 
-def dynamic_insights(outputs_root:Path) -> dict[str,str]:
-    result={}
+def dynamic_insights(outputs_root: Path) -> dict[str, str]:
+    result = {}
     try:
-        q=pd.read_csv(outputs_root/"01_data_basic_clean"/"contradiction_summary.csv")
-        r=q.sort_values("affected_pct",ascending=False).iloc[0]
-        result["data_quality"]=f"The largest semantic-integrity finding is {r.issue.lower()}, affecting {r.affected_pct:.1f}% of cleaned records. {r.required_action}"
-    except Exception: pass
+        q = pd.read_csv(outputs_root / "01_data_basic_clean" / "contradiction_summary.csv")
+        r = q.sort_values("affected_pct", ascending=False).iloc[0]
+        result["data_quality"] = (
+            f"The largest semantic-integrity finding is {r.issue.lower()}, affecting {r.affected_pct:.1f}% of cleaned records. {r.required_action}"
+        )
+    except Exception:
+        pass
     try:
-        c=pd.read_csv(outputs_root/"02_data_ready_for_ml"/"train_encoded_correlations.csv").iloc[0]
-        direction="positive" if c.pearson_r>=0 else "negative"
-        result["correlation"]=f"The strongest TRAIN-only encoded linear association is {c.encoded_feature} (r={c.pearson_r:+.2f}, {direction}). This is association, not causal evidence."
-    except Exception: pass
+        c = pd.read_csv(
+            outputs_root / "02_data_ready_for_ml" / "train_encoded_correlations.csv"
+        ).iloc[0]
+        direction = "positive" if c.pearson_r >= 0 else "negative"
+        result["correlation"] = (
+            f"The strongest TRAIN-only encoded linear association is {c.encoded_feature} (r={c.pearson_r:+.2f}, {direction}). This is association, not causal evidence."
+        )
+    except Exception:
+        pass
     try:
-        e=pd.read_csv(outputs_root/"03_ai_job_market_segmentation"/"cluster_evaluation.csv").iloc[0]
-        s=float(e.silhouette); quality="strong" if s>=0.5 else "moderate" if s>=0.25 else "weak/overlapping"
-        result["segmentation"]=f"Selected {e.algorithm} with K={int(e.k)}. Silhouette={s:.3f}, indicating {quality} structural separation; cluster labels should be interpreted descriptively."
-    except Exception: pass
+        e = pd.read_csv(
+            outputs_root / "03_ai_job_market_segmentation" / "cluster_evaluation.csv"
+        ).iloc[0]
+        s = float(e.silhouette)
+        quality = "strong" if s >= 0.5 else "moderate" if s >= 0.25 else "weak/overlapping"
+        result["segmentation"] = (
+            f"Selected {e.algorithm} with K={int(e.k)}. Silhouette={s:.3f}, indicating {quality} structural separation; cluster labels should be interpreted descriptively."
+        )
+    except Exception:
+        pass
     try:
-        m=pd.read_csv(outputs_root/"04_model_comparison"/"model_comparison.csv").sort_values("MAE_mean").iloc[0]
-        result["model_comparison"]=f"{m.model} has the lowest mean temporal-CV MAE (${m.MAE_mean:,.0f}) across the candidate models and therefore advances to bounded tuning."
-    except Exception: pass
+        m = (
+            pd.read_csv(outputs_root / "04_model_comparison" / "model_comparison.csv")
+            .sort_values("MAE_mean")
+            .iloc[0]
+        )
+        result["model_comparison"] = (
+            f"{m.model} has the lowest mean temporal-CV MAE (${m.MAE_mean:,.0f}) across the candidate models and therefore advances to bounded tuning."
+        )
+    except Exception:
+        pass
     try:
-        with open(outputs_root/"05_best_model"/"locked_test_metrics.json",encoding="utf-8") as f: met=json.load(f)
-        result["best_model"]=f"One-time locked-test evaluation gives MAE ${met['MAE']:,.0f}, RMSE ${met['RMSE']:,.0f}, R² {met['R2']:.3f}, and MedAE ${met['MedAE']:,.0f}. The RMSE–MedAE gap should be read as evidence of a heavier error tail."
-    except Exception: pass
+        with open(
+            outputs_root / "05_best_model" / "locked_test_metrics.json", encoding="utf-8"
+        ) as f:
+            met = json.load(f)
+        result["best_model"] = (
+            f"One-time locked-test evaluation gives MAE ${met['MAE']:,.0f}, RMSE ${met['RMSE']:,.0f}, R² {met['R2']:.3f}, and MedAE ${met['MedAE']:,.0f}. The RMSE–MedAE gap should be read as evidence of a heavier error tail."
+        )
+    except Exception:
+        pass
     return result
 
 
-def run_pipeline(raw_path:Path, root:Path|None=None, workspace_root:Path|None=None) -> dict[str,Any]:
+def run_pipeline(
+    raw_path: Path, root: Path | None = None, workspace_root: Path | None = None
+) -> dict[str, Any]:
     """Run the complete offline workflow.
 
     ``root`` is the immutable project/code root (configuration and source).
@@ -2241,297 +2910,518 @@ def run_pipeline(raw_path:Path, root:Path|None=None, workspace_root:Path|None=No
     the project root.  This separation lets the UI trigger the *same* offline
     flow without overwriting the baseline evidence.
     """
-    project=root or project_root()
-    workspace=Path(workspace_root) if workspace_root is not None else project
-    cfg=load_config(project/"config"/"project.yaml")
-    seed=int(cfg["project"].get("random_seed",42))
-    run_id=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out=ensure_dir(workspace/"outputs"); art=ensure_dir(workspace/"artifacts")
-    stages={
-        "s1":ensure_dir(out/"01_data_basic_clean"),"s2":ensure_dir(out/"02_data_ready_for_ml"),
-        "seg":ensure_dir(out/"03_ai_job_market_segmentation"),"mc":ensure_dir(out/"04_model_comparison"),
-        "bm":ensure_dir(out/"05_best_model"),"pred":ensure_dir(out/"06_salary_prediction"),
-        "int":ensure_dir(out/"07_integrated_insight"),"full":ensure_dir(out/"08_full_pipeline"),
+    project = root or project_root()
+    workspace = Path(workspace_root) if workspace_root is not None else project
+    cfg = load_config(project / "config" / "project.yaml")
+    seed = int(cfg["project"].get("random_seed", 42))
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out = ensure_dir(workspace / "outputs")
+    art = ensure_dir(workspace / "artifacts")
+    stages = {
+        "s1": ensure_dir(out / "01_data_basic_clean"),
+        "s2": ensure_dir(out / "02_data_ready_for_ml"),
+        "seg": ensure_dir(out / "03_ai_job_market_segmentation"),
+        "mc": ensure_dir(out / "04_model_comparison"),
+        "bm": ensure_dir(out / "05_best_model"),
+        "pred": ensure_dir(out / "06_salary_prediction"),
+        "int": ensure_dir(out / "07_integrated_insight"),
+        "full": ensure_dir(out / "08_full_pipeline"),
     }
 
     # ── COMMON FOUNDATION: Stage 1–3 ──────────────────────────────────────────
-    raw=read_raw(raw_path)
-    save_csv(profile_dataframe(raw),stages["s1"]/"raw_profile.csv")
-    clean,audit=basic_clean(raw)
-    save_csv(clean,stages["s1"]/"basic_clean.csv")
-    save_json(audit,stages["s1"]/"basic_clean_audit.json")
-    findings,details=contradiction_outputs(clean)
-    save_csv(findings,stages["s1"]/"contradiction_summary.csv")
-    for n,d in details.items():
-        save_csv(d,stages["s1"]/f"{n}.csv")
-    for n,d in stage1_detailed_outputs(clean).items():
-        save_csv(d,stages["s1"]/f"{n}.csv")
-    target_summary={
-        "rows":len(clean),"min":float(clean[TARGET].min()),"max":float(clean[TARGET].max()),
-        "mean":float(clean[TARGET].mean()),"median":float(clean[TARGET].median()),
-        "std":float(clean[TARGET].std()),"q1":float(clean[TARGET].quantile(.25)),
-        "q3":float(clean[TARGET].quantile(.75)),
+    raw = read_raw(raw_path)
+    save_csv(profile_dataframe(raw), stages["s1"] / "raw_profile.csv")
+    clean, audit = basic_clean(raw)
+    save_csv(clean, stages["s1"] / "basic_clean.csv")
+    save_json(audit, stages["s1"] / "basic_clean_audit.json")
+    findings, details = contradiction_outputs(clean)
+    save_csv(findings, stages["s1"] / "contradiction_summary.csv")
+    for n, d in details.items():
+        save_csv(d, stages["s1"] / f"{n}.csv")
+    for n, d in stage1_detailed_outputs(clean).items():
+        save_csv(d, stages["s1"] / f"{n}.csv")
+    target_summary = {
+        "rows": len(clean),
+        "min": float(clean[TARGET].min()),
+        "max": float(clean[TARGET].max()),
+        "mean": float(clean[TARGET].mean()),
+        "median": float(clean[TARGET].median()),
+        "std": float(clean[TARGET].std()),
+        "q1": float(clean[TARGET].quantile(0.25)),
+        "q3": float(clean[TARGET].quantile(0.75)),
     }
-    save_json(target_summary,stages["s1"]/"target_summary.json")
+    save_json(target_summary, stages["s1"] / "target_summary.json")
 
     # ── COMMON FOUNDATION: Stage 4–5 + Branch B1–B3 readiness ───────────────
-    save_csv(feature_policy_table(),stages["s2"]/"feature_policy.csv")
-    prepared=clean.copy()
-    prepared["skill_count"]=derive_skill_count(prepared["required_skills"])
-    save_csv(prepared,stages["s2"]/"shared_prepared_feature_base.csv")
-    dev,test,split_summary=temporal_split(
+    save_csv(feature_policy_table(), stages["s2"] / "feature_policy.csv")
+    prepared = clean.copy()
+    prepared["skill_count"] = derive_skill_count(prepared["required_skills"])
+    save_csv(prepared, stages["s2"] / "shared_prepared_feature_base.csv")
+    dev, test, split_summary = temporal_split(
         prepared,
-        int(cfg["project"].get("locked_test_year",2026)),
-        int(cfg["project"].get("locked_test_month",3)),
+        int(cfg["project"].get("locked_test_year", 2026)),
+        int(cfg["project"].get("locked_test_month", 3)),
     )
-    save_csv(dev,stages["s2"]/"development_raw.csv")
-    save_csv(test,stages["s2"]/"locked_test_raw.csv")
-    save_json(split_summary,stages["s2"]/"temporal_split_summary.json")
+    save_csv(dev, stages["s2"] / "development_raw.csv")
+    save_csv(test, stages["s2"] / "locked_test_raw.csv")
+    save_json(split_summary, stages["s2"] / "temporal_split_summary.json")
 
-    ablation=run_ablation(dev,seed,int(cfg["project"].get("temporal_cv_folds",5)))
-    save_csv(ablation,stages["s2"]/"ablation_results.csv")
-    corr=encoded_correlations_train(dev)
-    save_csv(corr,stages["s2"]/"train_encoded_correlations.csv")
+    ablation = run_ablation(dev, seed, int(cfg["project"].get("temporal_cv_folds", 5)))
+    save_csv(ablation, stages["s2"] / "ablation_results.csv")
+    corr = encoded_correlations_train(dev)
+    save_csv(corr, stages["s2"] / "train_encoded_correlations.csv")
 
-    prep=make_salary_preprocessor(MODEL_FEATURES).fit(dev[MODEL_FEATURES])
-    ztr=prep.transform(dev[MODEL_FEATURES]); zte=prep.transform(test[MODEL_FEATURES])
-    names=prep.get_feature_names_out()
-    train_encoded=pd.DataFrame(ztr,columns=names)
-    test_encoded=pd.DataFrame(zte,columns=names)
-    save_csv(train_encoded,stages["s2"]/"train_preprocessed.csv")
-    save_csv(test_encoded,stages["s2"]/"locked_test_preprocessed.csv")
-    save_json({
-        "model_features":MODEL_FEATURES,
-        "encoded_feature_count":int(len(names)),
-        "encoded_feature_names":list(map(str,names)),
-        "preprocessor_fit_scope":"development only",
-    },stages["s2"]/"preprocessing_contract.json")
-    for n,d in stage2_detailed_outputs(dev,test,prep,ztr,names).items():
-        save_csv(d,stages["s2"]/f"{n}.csv")
+    prep = make_salary_preprocessor(MODEL_FEATURES).fit(dev[MODEL_FEATURES])
+    ztr = prep.transform(dev[MODEL_FEATURES])
+    zte = prep.transform(test[MODEL_FEATURES])
+    names = prep.get_feature_names_out()
+    train_encoded = pd.DataFrame(ztr, columns=names)
+    test_encoded = pd.DataFrame(zte, columns=names)
+    save_csv(train_encoded, stages["s2"] / "train_preprocessed.csv")
+    save_csv(test_encoded, stages["s2"] / "locked_test_preprocessed.csv")
+    save_json(
+        {
+            "model_features": MODEL_FEATURES,
+            "encoded_feature_count": int(len(names)),
+            "encoded_feature_names": list(map(str, names)),
+            "preprocessor_fit_scope": "development only",
+        },
+        stages["s2"] / "preprocessing_contract.json",
+    )
+    for n, d in stage2_detailed_outputs(dev, test, prep, ztr, names).items():
+        save_csv(d, stages["s2"] / f"{n}.csv")
 
     # FPTCranes-PRJ2-main compatible Branch-B readiness evidence.
-    before_after=pd.DataFrame([
-        {"aspect":"Rows","before":len(raw),"after":len(prepared),"note":"Corrupted/duplicate rows removed during Basic Clean."},
-        {"aspect":"Raw columns","before":raw.shape[1],"after":prepared.shape[1],"note":"Identifier removed; skill_count is constructed after Basic Clean."},
-        {"aspect":"Model raw inputs","before":raw.shape[1],"after":len(MODEL_FEATURES),"note":"Leakage/redundant fields blocked by policy."},
-        {"aspect":"Encoded model features","before":np.nan,"after":len(names),"note":"Fitted on DEV only; locked test is transform-only."},
-    ])
-    save_csv(before_after,stages["s2"]/"08_before_after_processing.csv")
-    monthly=pd.concat([
-        dev.assign(split="Development"),
-        test.assign(split="Locked test"),
-    ],ignore_index=True).groupby(["posting_year","posting_month","split"]).size().rename("records").reset_index()
-    monthly["period"]=monthly["posting_year"].astype(int).astype(str)+"-"+monthly["posting_month"].astype(int).astype(str).str.zfill(2)
-    save_csv(monthly,stages["s2"]/"08_monthly_distribution.csv")
-    save_csv(pd.DataFrame([split_summary]),stages["s2"]/"08_split_summary.csv")
-    save_csv(train_encoded,stages["s2"]/"08_X_train_encoded.csv")
-    save_csv(test_encoded,stages["s2"]/"08_X_locked_test_encoded.csv")
-    save_csv(pd.DataFrame({TARGET:dev[TARGET].to_numpy()}),stages["s2"]/"08_y_train.csv")
-    save_csv(pd.DataFrame({TARGET:test[TARGET].to_numpy()}),stages["s2"]/"08_y_locked_test.csv")
-    save_json({
-        "ready":True,
-        "development_rows":len(dev),"locked_test_rows":len(test),
-        "encoded_features":len(names),"skill_vocabulary":len(prep.named_transformers_["skills"].vocabulary_),
-        "preprocessor_fit_scope":"development only","target":TARGET,
-        "notes":[
-            "Locked future period is excluded from feature selection, preprocessing fitting and temporal CV.",
-            "OneHotEncoder uses handle_unknown='ignore' for unseen categories.",
-            "Skill vocabulary is fitted on DEV only.",
-        ],
-    },stages["s2"]/"08_training_readiness.json")
+    before_after = pd.DataFrame(
+        [
+            {
+                "aspect": "Rows",
+                "before": len(raw),
+                "after": len(prepared),
+                "note": "Corrupted/duplicate rows removed during Basic Clean.",
+            },
+            {
+                "aspect": "Raw columns",
+                "before": raw.shape[1],
+                "after": prepared.shape[1],
+                "note": "Identifier removed; skill_count is constructed after Basic Clean.",
+            },
+            {
+                "aspect": "Model raw inputs",
+                "before": raw.shape[1],
+                "after": len(MODEL_FEATURES),
+                "note": "Leakage/redundant fields blocked by policy.",
+            },
+            {
+                "aspect": "Encoded model features",
+                "before": np.nan,
+                "after": len(names),
+                "note": "Fitted on DEV only; locked test is transform-only.",
+            },
+        ]
+    )
+    save_csv(before_after, stages["s2"] / "08_before_after_processing.csv")
+    monthly = (
+        pd.concat(
+            [
+                dev.assign(split="Development"),
+                test.assign(split="Locked test"),
+            ],
+            ignore_index=True,
+        )
+        .groupby(["posting_year", "posting_month", "split"])
+        .size()
+        .rename("records")
+        .reset_index()
+    )
+    monthly["period"] = (
+        monthly["posting_year"].astype(int).astype(str)
+        + "-"
+        + monthly["posting_month"].astype(int).astype(str).str.zfill(2)
+    )
+    save_csv(monthly, stages["s2"] / "08_monthly_distribution.csv")
+    save_csv(pd.DataFrame([split_summary]), stages["s2"] / "08_split_summary.csv")
+    save_csv(train_encoded, stages["s2"] / "08_X_train_encoded.csv")
+    save_csv(test_encoded, stages["s2"] / "08_X_locked_test_encoded.csv")
+    save_csv(pd.DataFrame({TARGET: dev[TARGET].to_numpy()}), stages["s2"] / "08_y_train.csv")
+    save_csv(pd.DataFrame({TARGET: test[TARGET].to_numpy()}), stages["s2"] / "08_y_locked_test.csv")
+    save_json(
+        {
+            "ready": True,
+            "development_rows": len(dev),
+            "locked_test_rows": len(test),
+            "encoded_features": len(names),
+            "skill_vocabulary": len(prep.named_transformers_["skills"].vocabulary_),
+            "preprocessor_fit_scope": "development only",
+            "target": TARGET,
+            "notes": [
+                "Locked future period is excluded from feature selection, preprocessing fitting and temporal CV.",
+                "OneHotEncoder uses handle_unknown='ignore' for unseen categories.",
+                "Skill vocabulary is fitted on DEV only.",
+            ],
+        },
+        stages["s2"] / "08_training_readiness.json",
+    )
 
     # ── BRANCH A: AI JOB MARKET SEGMENTATION ────────────────────────────────
-    seg_cfg=cfg.get("segmentation",{})
-    res_cfg=seg_cfg.get("resample_stability",{}) or {}
-    pca_max=seg_cfg.get("pca_max_components",None)
-    robust_cfg=seg_cfg.get("representation_robustness",{}) or {}
-    seg_bundle,seg_tables,seg_meta=run_segmentation(
-        dev,prepared,seed,
-        int(seg_cfg.get("k_min",2)),int(seg_cfg.get("k_max",8)),
-        stability_seeds=list(robust_cfg.get("screening_stability_seeds",seg_cfg.get("stability_seeds",[11,23,42,71,101]))),
-        stability_min=float(seg_cfg.get("stability_min",0.90)),
-        min_cluster_share=float(seg_cfg.get("min_cluster_share",0.05)),
-        silhouette_tolerance=float(seg_cfg.get("silhouette_tolerance",0.01)),
-        pca_variance_threshold=float(seg_cfg.get("pca_variance_threshold",0.85)),
-        pca_min_components=int(seg_cfg.get("pca_min_components",2)),
-        pca_max_components=None if pca_max in (None,"null") else int(pca_max),
-        resample_n=int(robust_cfg.get("screening_resamples",res_cfg.get("n_resamples",8))),
-        resample_fraction=float(res_cfg.get("sample_fraction",0.85)),
-        resample_stability_min=float(res_cfg.get("min_mean_ari",0.75)),
-        resample_seed=int(res_cfg.get("random_seed",2026)),
-        representation_silhouette_tolerance=float(robust_cfg.get("silhouette_tolerance",0.02)),
-        familywise_caps=dict(robust_cfg.get("family_pca_caps",{})),
-        correlation_threshold=float(seg_cfg.get("correlation_threshold",0.90)),
+    seg_cfg = cfg.get("segmentation", {})
+    res_cfg = seg_cfg.get("resample_stability", {}) or {}
+    pca_max = seg_cfg.get("pca_max_components", None)
+    robust_cfg = seg_cfg.get("representation_robustness", {}) or {}
+    seg_bundle, seg_tables, seg_meta = run_segmentation(
+        dev,
+        prepared,
+        seed,
+        int(seg_cfg.get("k_min", 2)),
+        int(seg_cfg.get("k_max", 8)),
+        stability_seeds=list(
+            robust_cfg.get(
+                "screening_stability_seeds", seg_cfg.get("stability_seeds", [11, 23, 42, 71, 101])
+            )
+        ),
+        stability_min=float(seg_cfg.get("stability_min", 0.90)),
+        min_cluster_share=float(seg_cfg.get("min_cluster_share", 0.05)),
+        silhouette_tolerance=float(seg_cfg.get("silhouette_tolerance", 0.01)),
+        pca_variance_threshold=float(seg_cfg.get("pca_variance_threshold", 0.85)),
+        pca_min_components=int(seg_cfg.get("pca_min_components", 2)),
+        pca_max_components=None if pca_max in (None, "null") else int(pca_max),
+        resample_n=int(robust_cfg.get("screening_resamples", res_cfg.get("n_resamples", 8))),
+        resample_fraction=float(res_cfg.get("sample_fraction", 0.85)),
+        resample_stability_min=float(res_cfg.get("min_mean_ari", 0.75)),
+        resample_seed=int(res_cfg.get("random_seed", 2026)),
+        representation_silhouette_tolerance=float(robust_cfg.get("silhouette_tolerance", 0.02)),
+        familywise_caps=dict(robust_cfg.get("family_pca_caps", {})),
+        correlation_threshold=float(seg_cfg.get("correlation_threshold", 0.90)),
     )
-    for n,d in seg_tables.items():
-        save_csv(d,stages["seg"]/f"{n}.csv")
-    save_json(seg_meta,stages["seg"]/"segmentation_metadata.json")
-    save_json(seg_meta["rationale"],stages["seg"]/"k_selection_rationale.json")
-    save_json(seg_meta.get("representation_decision",{}),stages["seg"]/"representation_decision.json")
-    save_json(seg_meta.get("feature_space_decision",{}),stages["seg"]/"feature_space_decision.json")
-    save_json(seg_meta["insights"],stages["seg"]/"segmentation_insights.json")
-    joblib.dump(seg_bundle,art/"cluster_bundle.joblib")
+    for n, d in seg_tables.items():
+        save_csv(d, stages["seg"] / f"{n}.csv")
+    save_json(seg_meta, stages["seg"] / "segmentation_metadata.json")
+    save_json(seg_meta["rationale"], stages["seg"] / "k_selection_rationale.json")
+    save_json(
+        seg_meta.get("representation_decision", {}), stages["seg"] / "representation_decision.json"
+    )
+    save_json(
+        seg_meta.get("feature_space_decision", {}), stages["seg"] / "feature_space_decision.json"
+    )
+    save_json(seg_meta["insights"], stages["seg"] / "segmentation_insights.json")
+    joblib.dump(seg_bundle, art / "cluster_bundle.joblib")
 
     # ── BRANCH B4: MODEL TRAINING & TEMPORAL COMPARISON ────────────────────
-    cv_rows=[]; summaries=[]
-    for name,model in candidate_models(seed).items():
-        f,s=evaluate_model_cv(dev,MODEL_FEATURES,name,model,int(cfg["project"].get("temporal_cv_folds",5)))
-        cv_rows.append(f); summaries.append(s)
-    fold_metrics=pd.concat(cv_rows,ignore_index=True)
-    model_comparison=pd.DataFrame(summaries).sort_values("MAE_mean").reset_index(drop=True)
-    save_csv(fold_metrics,stages["mc"]/"cv_fold_metrics.csv")
-    save_csv(model_comparison,stages["mc"]/"model_comparison.csv")
+    cv_rows = []
+    summaries = []
+    for name, model in candidate_models(seed).items():
+        f, s = evaluate_model_cv(
+            dev, MODEL_FEATURES, name, model, int(cfg["project"].get("temporal_cv_folds", 5))
+        )
+        cv_rows.append(f)
+        summaries.append(s)
+    fold_metrics = pd.concat(cv_rows, ignore_index=True)
+    model_comparison = pd.DataFrame(summaries).sort_values("MAE_mean").reset_index(drop=True)
+    save_csv(fold_metrics, stages["mc"] / "cv_fold_metrics.csv")
+    save_csv(model_comparison, stages["mc"] / "model_comparison.csv")
 
-    family_ablation=run_feature_family_ablation(dev,seed,int(cfg["project"].get("temporal_cv_folds",5)))
-    fold_importance=random_forest_importance_by_fold(dev,seed,int(cfg["project"].get("temporal_cv_folds",5)))
-    save_csv(family_ablation,stages["mc"]/"09_feature_family_ablation.csv")
-    save_csv(fold_importance,stages["mc"]/"09_feature_importance_by_fold.csv")
-    importance_drift=fold_importance.groupby("encoded_feature").agg(
-        importance_mean=("importance","mean"),
-        importance_std=("importance","std"),
-        importance_min=("importance","min"),
-        importance_max=("importance","max"),
-        folds=("fold","nunique"),
-    ).reset_index().fillna({"importance_std":0.0})
-    importance_drift["importance_cv"]=np.where(
-        importance_drift["importance_mean"].abs()>1e-12,
-        importance_drift["importance_std"]/importance_drift["importance_mean"].abs(),
+    family_ablation = run_feature_family_ablation(
+        dev, seed, int(cfg["project"].get("temporal_cv_folds", 5))
+    )
+    fold_importance = random_forest_importance_by_fold(
+        dev, seed, int(cfg["project"].get("temporal_cv_folds", 5))
+    )
+    save_csv(family_ablation, stages["mc"] / "09_feature_family_ablation.csv")
+    save_csv(fold_importance, stages["mc"] / "09_feature_importance_by_fold.csv")
+    importance_drift = (
+        fold_importance.groupby("encoded_feature")
+        .agg(
+            importance_mean=("importance", "mean"),
+            importance_std=("importance", "std"),
+            importance_min=("importance", "min"),
+            importance_max=("importance", "max"),
+            folds=("fold", "nunique"),
+        )
+        .reset_index()
+        .fillna({"importance_std": 0.0})
+    )
+    importance_drift["importance_cv"] = np.where(
+        importance_drift["importance_mean"].abs() > 1e-12,
+        importance_drift["importance_std"] / importance_drift["importance_mean"].abs(),
         0.0,
     )
-    save_csv(importance_drift.sort_values("importance_mean",ascending=False),stages["mc"]/"09_feature_importance_drift.csv")
-    save_csv(fold_metrics,stages["mc"]/"09_model_comparison_fold_metrics.csv")
-    save_csv(model_comparison,stages["mc"]/"09_model_comparison_temporal_cv.csv")
-    save_csv(model_comparison[["model","fit_time_mean_s","predict_time_mean_s"]],stages["mc"]/"09_model_runtime_performance.csv")
-    save_csv(fold_metrics[["model","fold","validation_period","MAE","RMSE","R2","MedAE"]],stages["mc"]/"09_fold_stability_mae.csv")
+    save_csv(
+        importance_drift.sort_values("importance_mean", ascending=False),
+        stages["mc"] / "09_feature_importance_drift.csv",
+    )
+    save_csv(fold_metrics, stages["mc"] / "09_model_comparison_fold_metrics.csv")
+    save_csv(model_comparison, stages["mc"] / "09_model_comparison_temporal_cv.csv")
+    save_csv(
+        model_comparison[["model", "fit_time_mean_s", "predict_time_mean_s"]],
+        stages["mc"] / "09_model_runtime_performance.csv",
+    )
+    save_csv(
+        fold_metrics[["model", "fold", "validation_period", "MAE", "RMSE", "R2", "MedAE"]],
+        stages["mc"] / "09_fold_stability_mae.csv",
+    )
 
-    best_family=str(model_comparison.iloc[0].model)
+    best_family = str(model_comparison.iloc[0].model)
 
-    if best_family=="Random Forest":
-        s1, s2, s3, s4, s5, s_sum = tune_random_forest_manual_steps(dev,int(cfg["project"].get("temporal_cv_folds",5)),seed)
+    if best_family == "Random Forest":
+        s1, s2, s3, s4, s5, s_sum = tune_random_forest_manual_steps(
+            dev, int(cfg["project"].get("temporal_cv_folds", 5)), seed
+        )
         tuning = s1
-        save_csv(s1, stages["bm"]/"tuning_results.csv")
-        save_csv(s1, stages["bm"]/"10_best_model_tuning_results.csv")
-        save_csv(s1, stages["bm"]/"manual_tuning_step1_gridsearch.csv")
-        save_csv(s2, stages["bm"]/"manual_tuning_step2_n_estimators.csv")
-        save_csv(s3, stages["bm"]/"manual_tuning_step3_max_depth.csv")
-        save_csv(s4, stages["bm"]/"manual_tuning_step4_min_samples_leaf.csv")
-        save_csv(s5, stages["bm"]/"manual_tuning_step5_max_features.csv")
-        save_csv(s_sum, stages["bm"]/"manual_tuning_4params_summary.csv")
+        save_csv(s1, stages["bm"] / "tuning_results.csv")
+        save_csv(s1, stages["bm"] / "10_best_model_tuning_results.csv")
+        save_csv(s1, stages["bm"] / "manual_tuning_step1_gridsearch.csv")
+        save_csv(s2, stages["bm"] / "manual_tuning_step2_n_estimators.csv")
+        save_csv(s3, stages["bm"] / "manual_tuning_step3_max_depth.csv")
+        save_csv(s4, stages["bm"] / "manual_tuning_step4_min_samples_leaf.csv")
+        save_csv(s5, stages["bm"] / "manual_tuning_step5_max_features.csv")
+        save_csv(s_sum, stages["bm"] / "manual_tuning_4params_summary.csv")
     else:
         tuning = pd.DataFrame()
-    final_est=final_model_from_selection(best_family,tuning,seed)
-    final_pipe,metrics,diag=finalize_salary_model(dev,test,final_est,seed)
-    for n,d in diag.items():
-        save_csv(d,stages["bm"]/f"{n}.csv")
-    subgroup=best_model_subgroup_outputs(diag["locked_test_predictions"])
-    for n,d in subgroup.items():
-        save_csv(d,stages["bm"]/f"{n}.csv")
-    error_slices=branch_b_error_slices(diag["locked_test_predictions"])
-    save_csv(error_slices,stages["bm"]/"10_error_slices.csv")
-    save_csv(diag["locked_test_predictions"],stages["bm"]/"10_locked_test_predictions_with_error.csv")
-    save_csv(diag["raw_permutation_importance"],stages["bm"]/"10_raw_feature_permutation_importance.csv")
-    save_csv(diag["encoded_importance"],stages["bm"]/"10_encoded_feature_importance.csv")
-    save_csv(pd.DataFrame([metrics]),stages["bm"]/"10_final_locked_test_metrics.csv")
-    save_json(metrics,stages["bm"]/"locked_test_metrics.json")
+    final_est = final_model_from_selection(best_family, tuning, seed)
+    final_pipe, metrics, diag = finalize_salary_model(dev, test, final_est, seed)
+    for n, d in diag.items():
+        save_csv(d, stages["bm"] / f"{n}.csv")
+    subgroup = best_model_subgroup_outputs(diag["locked_test_predictions"])
+    for n, d in subgroup.items():
+        save_csv(d, stages["bm"] / f"{n}.csv")
+    error_slices = branch_b_error_slices(diag["locked_test_predictions"])
+    save_csv(error_slices, stages["bm"] / "10_error_slices.csv")
+    save_csv(
+        diag["locked_test_predictions"], stages["bm"] / "10_locked_test_predictions_with_error.csv"
+    )
+    save_csv(
+        diag["raw_permutation_importance"],
+        stages["bm"] / "10_raw_feature_permutation_importance.csv",
+    )
+    save_csv(diag["encoded_importance"], stages["bm"] / "10_encoded_feature_importance.csv")
+    save_csv(pd.DataFrame([metrics]), stages["bm"] / "10_final_locked_test_metrics.csv")
+    save_json(metrics, stages["bm"] / "locked_test_metrics.json")
 
     # ── BRANCH B7: DEPLOYABLE BUNDLE + METADATA ─────────────────────────────
-    joblib.dump(final_pipe,art/"model_bundle.joblib")
-    selected_params=final_est.get_params(deep=False)
-    selected_params={k:v for k,v in selected_params.items() if k in ["n_estimators","min_samples_leaf","max_features","max_depth","alpha","learning_rate"]}
-    metadata=metadata_from_pipeline(final_pipe,dev,split_summary,metrics,best_family,selected_params,run_id)
-    metadata["source_file"]=str(raw_path)
-    metadata["workspace_root"]=str(workspace)
-    save_json(metadata,art/"metadata.json")
-    save_json({"model_features":MODEL_FEATURES,"target":TARGET},art/"feature_contract.json")
-    joblib.dump(prep,art/"salary_preprocessor_train_only.joblib")
-    # Compatibility aliases used by FPTCranes-PRJ2-main.
-    joblib.dump(prep,art/"preprocessor_ml_ready.joblib")
-    joblib.dump(final_pipe,art/"model.pkl")
-    joblib.dump(prep,art/"preprocessor.pkl")
-
-    reloaded=joblib.load(art/"model_bundle.joblib")
-    p1=np.asarray(final_pipe.predict(test[MODEL_FEATURES].head(20)))
-    p2=np.asarray(reloaded.predict(test[MODEL_FEATURES].head(20)))
-    equivalence={
-        "reload_max_abs_diff":float(np.max(np.abs(p1-p2))),
-        "max_abs_diff":float(np.max(np.abs(p1-p2))),
-        "tolerance":1e-9,
-        "passed":bool(np.max(np.abs(p1-p2))<=1e-9),
+    joblib.dump(final_pipe, art / "model_bundle.joblib")
+    selected_params = final_est.get_params(deep=False)
+    selected_params = {
+        k: v
+        for k, v in selected_params.items()
+        if k
+        in [
+            "n_estimators",
+            "min_samples_leaf",
+            "max_features",
+            "max_depth",
+            "alpha",
+            "learning_rate",
+        ]
     }
-    save_json(equivalence,stages["pred"]/"serialization_check.json")
-    save_json(equivalence,art/"11_bundle_equivalence.json")
-    save_json(metadata,stages["pred"]/"model_metadata.json")
-    save_json(metadata,art/"metadata.json")
-    save_json({"model_features":MODEL_FEATURES},art/"feature_columns.json")
+    metadata = metadata_from_pipeline(
+        final_pipe, dev, split_summary, metrics, best_family, selected_params, run_id
+    )
+    metadata["source_file"] = str(raw_path)
+    metadata["workspace_root"] = str(workspace)
+    save_json(metadata, art / "metadata.json")
+    save_json({"model_features": MODEL_FEATURES, "target": TARGET}, art / "feature_contract.json")
+    joblib.dump(prep, art / "salary_preprocessor_train_only.joblib")
+    # Compatibility aliases used by FPTCranes-PRJ2-main.
+    joblib.dump(prep, art / "preprocessor_ml_ready.joblib")
+    joblib.dump(final_pipe, art / "model.pkl")
+    joblib.dump(prep, art / "preprocessor.pkl")
 
-    manifest=pd.DataFrame([
-        {"artifact":"model_bundle.joblib","purpose":"Complete preprocessor + fitted estimator","status":"PASS"},
-        {"artifact":"preprocessor_ml_ready.joblib","purpose":"Reusable fitted DEV-only transformer","status":"PASS"},
-        {"artifact":"metadata.json","purpose":"Serving contract, categories, ranges, metrics and limitations","status":"PASS"},
-        {"artifact":"feature_columns.json","purpose":"Exact ordered raw feature contract","status":"PASS"},
-        {"artifact":"11_bundle_equivalence.json","purpose":"Reload numerical-equivalence evidence","status":"PASS" if equivalence["passed"] else "FAIL"},
-    ])
-    save_csv(manifest,stages["bm"]/"11_deployment_artifact_manifest.csv")
+    reloaded = joblib.load(art / "model_bundle.joblib")
+    p1 = np.asarray(final_pipe.predict(test[MODEL_FEATURES].head(20)))
+    p2 = np.asarray(reloaded.predict(test[MODEL_FEATURES].head(20)))
+    equivalence = {
+        "reload_max_abs_diff": float(np.max(np.abs(p1 - p2))),
+        "max_abs_diff": float(np.max(np.abs(p1 - p2))),
+        "tolerance": 1e-9,
+        "passed": bool(np.max(np.abs(p1 - p2)) <= 1e-9),
+    }
+    save_json(equivalence, stages["pred"] / "serialization_check.json")
+    save_json(equivalence, art / "11_bundle_equivalence.json")
+    save_json(metadata, stages["pred"] / "model_metadata.json")
+    save_json(metadata, art / "metadata.json")
+    save_json({"model_features": MODEL_FEATURES}, art / "feature_columns.json")
 
-    pred_examples=diag["locked_test_predictions"].sort_values("absolute_error_usd").copy()
+    manifest = pd.DataFrame(
+        [
+            {
+                "artifact": "model_bundle.joblib",
+                "purpose": "Complete preprocessor + fitted estimator",
+                "status": "PASS",
+            },
+            {
+                "artifact": "preprocessor_ml_ready.joblib",
+                "purpose": "Reusable fitted DEV-only transformer",
+                "status": "PASS",
+            },
+            {
+                "artifact": "metadata.json",
+                "purpose": "Serving contract, categories, ranges, metrics and limitations",
+                "status": "PASS",
+            },
+            {
+                "artifact": "feature_columns.json",
+                "purpose": "Exact ordered raw feature contract",
+                "status": "PASS",
+            },
+            {
+                "artifact": "11_bundle_equivalence.json",
+                "purpose": "Reload numerical-equivalence evidence",
+                "status": "PASS" if equivalence["passed"] else "FAIL",
+            },
+        ]
+    )
+    save_csv(manifest, stages["bm"] / "11_deployment_artifact_manifest.csv")
+
+    pred_examples = diag["locked_test_predictions"].sort_values("absolute_error_usd").copy()
     # Include both small and large misses for honest interface examples.
-    n_each=min(5,max(1,len(pred_examples)//2))
-    examples=pd.concat([pred_examples.head(n_each),pred_examples.tail(n_each)]).drop_duplicates()
-    save_csv(examples,stages["pred"]/"12_locked_test_prediction_examples.csv")
-    save_csv(pd.DataFrame([{
-        "locked_test_rows":len(test),
-        "prediction_mean":float(diag["locked_test_predictions"]["predicted_salary_usd"].mean()),
-        "prediction_median":float(diag["locked_test_predictions"]["predicted_salary_usd"].median()),
-        "empirical_error_band_q90":float(metrics["prediction_interval_abs_error_q90"]),
-        "model":best_family,
-    }]),stages["pred"]/"12_prediction_summary.csv")
+    n_each = min(5, max(1, len(pred_examples) // 2))
+    examples = pd.concat([pred_examples.head(n_each), pred_examples.tail(n_each)]).drop_duplicates()
+    save_csv(examples, stages["pred"] / "12_locked_test_prediction_examples.csv")
+    save_csv(
+        pd.DataFrame(
+            [
+                {
+                    "locked_test_rows": len(test),
+                    "prediction_mean": float(
+                        diag["locked_test_predictions"]["predicted_salary_usd"].mean()
+                    ),
+                    "prediction_median": float(
+                        diag["locked_test_predictions"]["predicted_salary_usd"].median()
+                    ),
+                    "empirical_error_band_q90": float(metrics["prediction_interval_abs_error_q90"]),
+                    "model": best_family,
+                }
+            ]
+        ),
+        stages["pred"] / "12_prediction_summary.csv",
+    )
 
     # ── INTEGRATED INSIGHT ───────────────────────────────────────────────────
-    assignments=seg_tables["cluster_assignments"][["cluster","PC1","PC2"]].copy()
-    integrated=prepared.reset_index(drop=True).copy()
-    integrated[["cluster","PC1","PC2"]]=assignments
-    int_seg=integrated.groupby("cluster").agg(
-        records=(TARGET,"size"),actual_salary_mean=(TARGET,"mean"),
-        actual_salary_median=(TARGET,"median"),years_mean=("years_of_experience","mean"),
-        demand_mean=("demand_score","mean"),
-    ).reset_index()
-    save_csv(int_seg,stages["int"]/"segment_salary_summary.csv")
-    city=integrated.groupby(["cluster","country","city"]).agg(
-        records=(TARGET,"size"),salary_mean=(TARGET,"mean")
-    ).reset_index()
-    save_csv(city,stages["int"]/"segment_city_country_summary.csv")
-    locked_pred=diag["locked_test_predictions"].copy()
-    test_assign=predict_segments(seg_bundle,test)
-    locked_pred["cluster"]=test_assign.astype(int)
-    pred_by_seg=locked_pred.groupby("cluster").agg(
-        records=(TARGET,"size"),actual_salary_mean=(TARGET,"mean"),
-        predicted_salary_mean=("predicted_salary_usd","mean"),MAE=("absolute_error_usd","mean")
-    ).reset_index()
-    save_csv(pred_by_seg,stages["int"]/"predicted_salary_by_segment.csv")
+    assignments = seg_tables["cluster_assignments"][["cluster", "PC1", "PC2"]].copy()
+    integrated = prepared.reset_index(drop=True).copy()
+    integrated[["cluster", "PC1", "PC2"]] = assignments
+    int_seg = (
+        integrated.groupby("cluster")
+        .agg(
+            records=(TARGET, "size"),
+            actual_salary_mean=(TARGET, "mean"),
+            actual_salary_median=(TARGET, "median"),
+            years_mean=("years_of_experience", "mean"),
+            demand_mean=("demand_score", "mean"),
+        )
+        .reset_index()
+    )
+    save_csv(int_seg, stages["int"] / "segment_salary_summary.csv")
+    city = (
+        integrated.groupby(["cluster", "country", "city"])
+        .agg(records=(TARGET, "size"), salary_mean=(TARGET, "mean"))
+        .reset_index()
+    )
+    save_csv(city, stages["int"] / "segment_city_country_summary.csv")
+    locked_pred = diag["locked_test_predictions"].copy()
+    test_assign = predict_segments(seg_bundle, test)
+    locked_pred["cluster"] = test_assign.astype(int)
+    pred_by_seg = (
+        locked_pred.groupby("cluster")
+        .agg(
+            records=(TARGET, "size"),
+            actual_salary_mean=(TARGET, "mean"),
+            predicted_salary_mean=("predicted_salary_usd", "mean"),
+            MAE=("absolute_error_usd", "mean"),
+        )
+        .reset_index()
+    )
+    save_csv(pred_by_seg, stages["int"] / "predicted_salary_by_segment.csv")
 
     # ── FULL PIPELINE STATUS ─────────────────────────────────────────────────
-    status=pd.DataFrame([
-        {"order":"1","stage":"Common 1 — Project Scope & Raw Data Ingestion","status":"PASS","artifact":"01_data_basic_clean/raw_profile.csv"},
-        {"order":"2","stage":"Common 2 — Basic Clean","status":"PASS","artifact":"01_data_basic_clean/basic_clean.csv"},
-        {"order":"3","stage":"Common 3 — Data Quality & Contradiction Check","status":"PASS","artifact":"01_data_basic_clean/contradiction_summary.csv"},
-        {"order":"4","stage":"Common 4 — Feature Governance","status":"PASS","artifact":"02_data_ready_for_ml/feature_policy.csv"},
-        {"order":"5","stage":"Common 5 — Shared Prepared Feature Base","status":"PASS","artifact":"02_data_ready_for_ml/preprocessing_contract.json"},
-        {"order":"A1-A8","stage":"Branch A — AI Job Market Segmentation","status":"PASS","artifact":"03_ai_job_market_segmentation/k_selection_rationale.json"},
-        {"order":"B1-B3","stage":"Branch B — Temporal Split & TRAIN-only Preprocessing","status":"PASS","artifact":"02_data_ready_for_ml/08_training_readiness.json"},
-        {"order":"B4","stage":"Branch B — Model Training & Comparison","status":"PASS","artifact":"04_model_comparison/09_model_comparison_temporal_cv.csv"},
-        {"order":"B5-B6","stage":"Branch B — Best Model & Locked Test","status":"PASS","artifact":"05_best_model/10_final_locked_test_metrics.csv"},
-        {"order":"B7","stage":"Branch B — Deployment & Prediction Output","status":"PASS","artifact":"artifacts/model_bundle.joblib"},
-        {"order":"8","stage":"Integrated Insight & Streamlit Reporting","status":"PASS","artifact":"07_integrated_insight/segment_salary_summary.csv"},
-    ])
-    save_csv(status,stages["full"]/"pipeline_status.csv")
-    summary={
-        "run_id":run_id,"source_file":str(raw_path),"source_sha256":sha256_file(raw_path),
-        "workspace_root":str(workspace),
-        "raw_shape":list(raw.shape),"clean_shape":list(clean.shape),
-        "development_rows":len(dev),"locked_test_rows":len(test),
-        "segmentation":seg_meta,"best_model":best_family,"locked_test_metrics":metrics,
-        "python":platform.python_version(),"pandas":pd.__version__,"numpy":np.__version__,
-        "scikit_learn":sklearn.__version__,"created_utc":datetime.now(timezone.utc).isoformat(),
+    status = pd.DataFrame(
+        [
+            {
+                "order": "1",
+                "stage": "Common 1 — Project Scope & Raw Data Ingestion",
+                "status": "PASS",
+                "artifact": "01_data_basic_clean/raw_profile.csv",
+            },
+            {
+                "order": "2",
+                "stage": "Common 2 — Basic Clean",
+                "status": "PASS",
+                "artifact": "01_data_basic_clean/basic_clean.csv",
+            },
+            {
+                "order": "3",
+                "stage": "Common 3 — Data Quality & Contradiction Check",
+                "status": "PASS",
+                "artifact": "01_data_basic_clean/contradiction_summary.csv",
+            },
+            {
+                "order": "4",
+                "stage": "Common 4 — Feature Governance",
+                "status": "PASS",
+                "artifact": "02_data_ready_for_ml/feature_policy.csv",
+            },
+            {
+                "order": "5",
+                "stage": "Common 5 — Shared Prepared Feature Base",
+                "status": "PASS",
+                "artifact": "02_data_ready_for_ml/preprocessing_contract.json",
+            },
+            {
+                "order": "A1-A8",
+                "stage": "Branch A — AI Job Market Segmentation",
+                "status": "PASS",
+                "artifact": "03_ai_job_market_segmentation/k_selection_rationale.json",
+            },
+            {
+                "order": "B1-B3",
+                "stage": "Branch B — Temporal Split & TRAIN-only Preprocessing",
+                "status": "PASS",
+                "artifact": "02_data_ready_for_ml/08_training_readiness.json",
+            },
+            {
+                "order": "B4",
+                "stage": "Branch B — Model Training & Comparison",
+                "status": "PASS",
+                "artifact": "04_model_comparison/09_model_comparison_temporal_cv.csv",
+            },
+            {
+                "order": "B5-B6",
+                "stage": "Branch B — Best Model & Locked Test",
+                "status": "PASS",
+                "artifact": "05_best_model/10_final_locked_test_metrics.csv",
+            },
+            {
+                "order": "B7",
+                "stage": "Branch B — Deployment & Prediction Output",
+                "status": "PASS",
+                "artifact": "artifacts/model_bundle.joblib",
+            },
+            {
+                "order": "8",
+                "stage": "Integrated Insight & Streamlit Reporting",
+                "status": "PASS",
+                "artifact": "07_integrated_insight/segment_salary_summary.csv",
+            },
+        ]
+    )
+    save_csv(status, stages["full"] / "pipeline_status.csv")
+    summary = {
+        "run_id": run_id,
+        "source_file": str(raw_path),
+        "source_sha256": sha256_file(raw_path),
+        "workspace_root": str(workspace),
+        "raw_shape": list(raw.shape),
+        "clean_shape": list(clean.shape),
+        "development_rows": len(dev),
+        "locked_test_rows": len(test),
+        "segmentation": seg_meta,
+        "best_model": best_family,
+        "locked_test_metrics": metrics,
+        "python": platform.python_version(),
+        "pandas": pd.__version__,
+        "numpy": np.__version__,
+        "scikit_learn": sklearn.__version__,
+        "created_utc": datetime.now(timezone.utc).isoformat(),
     }
-    save_json(summary,stages["full"]/"run_summary.json")
+    save_json(summary, stages["full"] / "run_summary.json")
     return summary

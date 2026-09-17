@@ -5,7 +5,6 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-
 NormalizeSkills = Callable[[Any], list[str]]
 
 
@@ -28,7 +27,9 @@ def _profile_categorical(assignments: pd.DataFrame, column: str) -> pd.DataFrame
 
 def _skill_profile(assignments: pd.DataFrame, normalize_skills: NormalizeSkills) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    for rec in assignments[["record_id", "cluster", "required_skills", "annual_salary_usd"]].itertuples(index=False):
+    for rec in assignments[
+        ["record_id", "cluster", "required_skills", "annual_salary_usd"]
+    ].itertuples(index=False):
         # Count a skill once per posting. This exactly matches the intended
         # multi-hot semantics even if an input string repeats a token.
         for skill in set(normalize_skills(rec.required_skills)):
@@ -41,7 +42,9 @@ def _skill_profile(assignments: pd.DataFrame, normalize_skills: NormalizeSkills)
                 }
             )
     if not rows:
-        return pd.DataFrame(columns=["cluster", "skill", "records", "share_within_cluster", "salary_mean_posthoc"])
+        return pd.DataFrame(
+            columns=["cluster", "skill", "records", "share_within_cluster", "salary_mean_posthoc"]
+        )
     long = pd.DataFrame(rows)
     g = (
         long.groupby(["cluster", "skill"])
@@ -51,7 +54,9 @@ def _skill_profile(assignments: pd.DataFrame, normalize_skills: NormalizeSkills)
     totals = assignments.groupby("cluster").size().rename("cluster_records")
     g = g.merge(totals, on="cluster", how="left", validate="many_to_one")
     g["share_within_cluster"] = g["records"] / g["cluster_records"]
-    return g.sort_values(["cluster", "records", "skill"], ascending=[True, False, True]).reset_index(drop=True)
+    return g.sort_values(
+        ["cluster", "records", "skill"], ascending=[True, False, True]
+    ).reset_index(drop=True)
 
 
 def build_segmentation_evidence(
@@ -69,11 +74,25 @@ def build_segmentation_evidence(
     """
 
     required = {
-        "record_id", "cluster", "PC1", "PC2", "job_title", "job_category",
-        "country", "city", "experience_level", "years_of_experience",
-        "company_size", "industry", "remote_work", "demand_score",
-        "demand_growth_yoy_pct", "benefits_score_10", "ai_salary_premium_pct",
-        "required_skills", "annual_salary_usd",
+        "record_id",
+        "cluster",
+        "PC1",
+        "PC2",
+        "job_title",
+        "job_category",
+        "country",
+        "city",
+        "experience_level",
+        "years_of_experience",
+        "company_size",
+        "industry",
+        "remote_work",
+        "demand_score",
+        "demand_growth_yoy_pct",
+        "benefits_score_10",
+        "ai_salary_premium_pct",
+        "required_skills",
+        "annual_salary_usd",
     }
     missing = sorted(required.difference(assignments.columns))
     if missing:
@@ -86,7 +105,9 @@ def build_segmentation_evidence(
 
     out["cluster_years_distribution"] = (
         assignments.groupby(["cluster", "years_of_experience"])
-        .size().rename("records").reset_index()
+        .size()
+        .rename("records")
+        .reset_index()
     )
 
     company_parts = []
@@ -105,8 +126,13 @@ def build_segmentation_evidence(
 
     out["cluster_market_signal_values"] = assignments[
         [
-            "record_id", "cluster", "job_category", "country",
-            "demand_score", "demand_growth_yoy_pct", "benefits_score_10",
+            "record_id",
+            "cluster",
+            "job_category",
+            "country",
+            "demand_score",
+            "demand_growth_yoy_pct",
+            "benefits_score_10",
             "ai_salary_premium_pct",
         ]
     ].copy()
@@ -125,15 +151,24 @@ def build_segmentation_evidence(
     )
 
     hover_cols = [
-        "record_id", "PC1", "PC2", "job_title", "job_category", "country", "city",
-        "years_of_experience", "demand_score",
+        "record_id",
+        "PC1",
+        "PC2",
+        "job_title",
+        "job_category",
+        "country",
+        "city",
+        "years_of_experience",
+        "demand_score",
     ]
     base = assignments[hover_cols].copy()
     coords = candidate_assignments.merge(base, on="record_id", how="left", validate="many_to_one")
     out["candidate_cluster_coordinates"] = coords
     bal = (
         candidate_assignments.groupby(["algorithm", "k", "cluster"])
-        .size().rename("records").reset_index()
+        .size()
+        .rename("records")
+        .reset_index()
     )
     totals = bal.groupby(["algorithm", "k"])["records"].transform("sum")
     bal["share"] = bal["records"] / totals
@@ -157,20 +192,42 @@ def build_segmentation_insights(
     pca_visual_pct = 100.0 * float(meta["visualization_variance_captured"])
 
     largest = profiles.sort_values("records", ascending=False).iloc[0]
-    salary_spread = float(profiles["salary_mean"].max() - profiles["salary_mean"].min()) if len(profiles) > 1 else 0.0
+    salary_spread = (
+        float(profiles["salary_mean"].max() - profiles["salary_mean"].min())
+        if len(profiles) > 1
+        else 0.0
+    )
 
     job = evidence["cluster_job_category_profile"]
-    job_top = job.sort_values(["cluster", "records"], ascending=[True, False]).groupby("cluster", as_index=False).head(1)
-    job_text = "; ".join(f"C{int(r.cluster)}: {r.job_category} ({int(r.records)} records)" for r in job_top.itertuples())
+    job_top = (
+        job.sort_values(["cluster", "records"], ascending=[True, False])
+        .groupby("cluster", as_index=False)
+        .head(1)
+    )
+    job_text = "; ".join(
+        f"C{int(r.cluster)}: {r.job_category} ({int(r.records)} records)"
+        for r in job_top.itertuples()
+    )
 
     skill = evidence["cluster_skill_profile"]
     if len(skill):
-        skill_top = skill.sort_values(["cluster", "records"], ascending=[True, False]).groupby("cluster", as_index=False).head(1)
-        skill_text = "; ".join(f"C{int(r.cluster)}: {r.skill} ({int(r.records)})" for r in skill_top.itertuples())
+        skill_top = (
+            skill.sort_values(["cluster", "records"], ascending=[True, False])
+            .groupby("cluster", as_index=False)
+            .head(1)
+        )
+        skill_text = "; ".join(
+            f"C{int(r.cluster)}: {r.skill} ({int(r.records)})" for r in skill_top.itertuples()
+        )
     else:
         skill_text = "No normalized skill tokens were available."
 
-    country = evidence["country_cluster_profile"].groupby("country", as_index=False)["records"].sum().sort_values("records", ascending=False)
+    country = (
+        evidence["country_cluster_profile"]
+        .groupby("country", as_index=False)["records"]
+        .sum()
+        .sort_values("records", ascending=False)
+    )
     if len(country):
         top_country = country.iloc[0]
         geo_obs = f"{top_country.country} has the largest run-level posting volume ({int(top_country.records)} records)."
@@ -178,8 +235,12 @@ def build_segmentation_insights(
         geo_obs = "No country-level evidence is available."
 
     prof = profiles.copy()
-    demand_spread = float(prof["demand_mean"].max() - prof["demand_mean"].min()) if len(prof) > 1 else 0.0
-    years_spread = float(prof["years_mean"].max() - prof["years_mean"].min()) if len(prof) > 1 else 0.0
+    demand_spread = (
+        float(prof["demand_mean"].max() - prof["demand_mean"].min()) if len(prof) > 1 else 0.0
+    )
+    years_spread = (
+        float(prof["years_mean"].max() - prof["years_mean"].min()) if len(prof) > 1 else 0.0
+    )
 
     return {
         "representation": {
