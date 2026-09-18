@@ -70,7 +70,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T009 Configure error handling and logging infrastructure
 - [ ] T010 Setup environment configuration management
 - [ ] T011 Define input provenance, partition, and leakage-gate validation
-- [ ] T012 Define generated artifact schemas and producer-consumer compatibility checks
+- [ ] T012 Define generated artifact schemas, producer-consumer compatibility checks, and whether existing training outputs are reusable or affected outputs/artifacts require regeneration
 - [ ] T013 Define shared input-validation helpers for Streamlit widgets, uploads, paths, run IDs, and prediction scenarios
 - [ ] T014 Define documentation and ML evidence update locations for affected pipelines, artifacts, and UI behavior
 
@@ -170,7 +170,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX Security hardening and user-input validation review
 - [ ] TXXX Confirm Streamlit paths do not fit or retrain models
 - [ ] TXXX Verify scientific labels and non-causal interpretation boundaries
-- [ ] TXXX Run relevant pytest, offline pipeline, and Streamlit artifact-consumer checks
+- [ ] TXXX Run relevant pytest, reuse existing training outputs when valid, or rerun the offline pipeline when training code/output artifacts changed; then run Streamlit artifact-consumer checks
 - [ ] TXXX Run `graphify update .` after code changes, or record why scan/query-only review was sufficient
 - [ ] TXXX Run quickstart.md validation
 

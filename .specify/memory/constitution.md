@@ -1,12 +1,10 @@
 <!--
 Sync Impact Report
-- Version change: 1.1.1 -> 1.2.0
+- Version change: 1.2.0 -> 1.2.1
 - Modified principles:
-  - IV. Offline Training, Read-Only Reporting -> IV. Offline Training, Streamlit Presentation Boundary
-  - V. Honest Interpretation and Secure Defaults -> V. Honest Interpretation and Universal Input Validation
-  - VI. Model Evaluation Documentation -> VI. Model Evaluation Documentation
-- Added principles:
-  - VII. Graphify-Guided, Karpathy-Simple Changes
+  - II. Reproducible Staged Artifacts (clarified when existing training outputs may be reused and when retraining is mandatory)
+  - Development Workflow and Quality Gates (added artifact reuse/retraining checks)
+- Added principles: none
 - Added sections: none
 - Removed sections: none
 - Templates requiring updates:
@@ -14,8 +12,8 @@ Sync Impact Report
   - ✅ .specify/templates/spec-template.md
   - ✅ .specify/templates/tasks-template.md
   - ✅ .specify/templates/commands/*.md (directory absent; no command templates to update)
-  - ✅ README.md (reviewed; already aligned with offline Streamlit artifact boundary)
-  - ✅ AGENTS.md (reviewed; no stale constitution reference)
+  - ✅ README.md (not required; operational guidance is covered by constitution and AGENTS.md)
+  - ✅ AGENTS.md (added training output reuse/retraining guidance)
 - Follow-up TODOs: none
 -->
 # AI Job Market Salary Prediction Constitution
@@ -38,9 +36,14 @@ The documented staged workflow MUST remain reproducible from the versioned sourc
 and pinned project dependencies. Stochastic operations MUST use an explicit seed. Each run
 MUST emit inspectable intermediate evidence, final metrics, model metadata, and a serialized
 inference bundle whose feature schema matches serving. Data provenance MUST include the input
-path or identifier and a content hash. A change to an artifact name, schema, stage meaning, or
-consumer contract MUST update every producer, consumer, test, and relevant document in the
-same change.
+path or identifier and a content hash. Approved existing training outputs MAY be reused for
+validation, documentation, or UI consumption when the training code, source data,
+configuration, dependency lock, artifact schema, and consumer contract are unchanged and the
+needed output files already exist. Contributors MUST NOT retrain merely to satisfy a review
+or demo when equivalent current outputs are present. A change to training logic, artifact
+contents, artifact name, schema, stage meaning, or consumer contract MUST update every
+producer, consumer, test, and relevant document in the same change and MUST regenerate or
+explicitly invalidate the affected training outputs/artifacts before relying on them.
 
 ### III. Evidence-First Verification (NON-NEGOTIABLE)
 
@@ -148,11 +151,15 @@ review was sufficient.
    alternative; exceptions cannot waive leakage safety, input validation, or evidence
    requirements.
 3. Tasks MUST put tests and validation before implementation, retain traceability to user
-   stories, include documentation work, and include Graphify review or graph-refresh work
-   when interfaces or code change.
+   stories, include documentation work, state whether existing training outputs can be reused
+   or affected artifacts must be regenerated, and include Graphify review or graph-refresh
+   work when interfaces or code change.
 4. Reviews MUST inspect the actual diff, run relevant automated tests, verify the exact
    pipeline or Streamlit entrypoint affected by the change, and reject model fitting in UI
-   paths or unvalidated input paths. Model-result reviews MUST cite generated artifacts
+   paths or unvalidated input paths. Reviews MUST reuse approved existing outputs when no
+   training-producing code, data, config, dependency, schema, or consumer contract changed;
+   when such a change did occur, reviews MUST require regenerated or invalidated affected
+   artifacts before accepting evidence. Model-result reviews MUST cite generated artifacts
    rather than recollection or console-only output.
 5. Code changes MUST run `graphify update .` after verification unless the change records a
    valid reason a scan-only or query-only Graphify review was sufficient. Documentation-only
@@ -176,4 +183,4 @@ acceptable only when its necessity and simpler rejected alternative are document
 commands and project-specific guidance remain in `README.md` and `AGENTS.md`, but neither may
 override this constitution.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-09-17
+**Version**: 1.2.1 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-09-18

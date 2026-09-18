@@ -34,7 +34,8 @@
 - **Data integrity**: Declare the target, feature policy, partitions, leakage controls, and
   training-only fit boundaries. Use N/A only with a concrete reason.
 - **Reproducibility and ML evidence**: Identify seeds, input provenance, generated artifacts,
-  metrics, reports, and every affected producer/consumer contract.
+  metrics, reports, every affected producer/consumer contract, and whether existing training
+  outputs may be reused or affected outputs/artifacts must be regenerated.
 - **Verification**: Define failing-first tests and the exact pytest, pipeline, Streamlit, or
   artifact-equivalence checks that will provide acceptance evidence.
 - **Streamlit boundary**: Confirm UI code remains presentation/orchestration only, does not

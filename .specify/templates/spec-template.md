@@ -114,7 +114,8 @@
 - **Data boundary**: [Target, feature policy, temporal partitions, leakage risks, and which
   transformations are fitted on training data only]
 - **Artifact contract**: [Affected output packs, bundle/metadata schemas, producers,
-  consumers, compatibility expectations, and provenance evidence]
+  consumers, compatibility expectations, provenance evidence, and whether existing training
+  outputs can be reused or affected outputs/artifacts must be regenerated]
 - **Streamlit boundary**: [How training remains offline and Streamlit remains a presentation
   and artifact-consumer layer, or why this feature is not applicable]
 - **User input validation**: [Every uploaded file, widget, credential, path, run ID, and
