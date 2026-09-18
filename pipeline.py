@@ -41,6 +41,7 @@ from pathlib import Path
 
 import pandas as pd
 from src.ai_job_market import core
+from src.ai_job_market.training_console import write_block
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA = PROJECT_ROOT / "data" / "raw" / "ai_jobs_market_2025_2026.csv"
@@ -368,13 +369,13 @@ STAGES = [
         _summary_shared_base,
     ),
     StageSpec(
-        "B1–B3",
+        "B1-B3",
         "Branch B — Temporal Split & TRAIN-only Preprocessing",
         "outputs/02_data_ready_for_ml/08_training_readiness.json",
         _summary_b123,
     ),
     StageSpec(
-        "A1–A8",
+        "A1-A8",
         "Branch A — AI Job Market Segmentation",
         "outputs/03_ai_job_market_segmentation/segmentation_insights.json",
         _summary_branch_a,
@@ -386,7 +387,7 @@ STAGES = [
         _summary_b4,
     ),
     StageSpec(
-        "B5–B6",
+        "B5-B6",
         "Branch B — Best Model, Explainability & Locked Test",
         "outputs/05_best_model/locked_test_metrics.json",
         _summary_b56,
@@ -442,7 +443,6 @@ class TerminalProgress:
         self.pipeline_started = time.perf_counter()
         self.stage_started = self.pipeline_started
         self._print_header()
-        self._announce_current()
         if self.heartbeat_enabled:
             self._thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
             self._thread.start()
@@ -479,16 +479,52 @@ class TerminalProgress:
                     return
                 elapsed = time.perf_counter() - self.stage_started
                 total = time.perf_counter() - self.pipeline_started
-                print(
+                write_block(
+                    sys.stdout,
                     _yellow(
                         f"[WORKING] {stage.code:<6} still running "
                         f"| stage={_fmt_elapsed(elapsed)} | total={_fmt_elapsed(total)}"
                     ),
-                    flush=True,
                 )
 
+    def observe(self, event: dict) -> None:
+        """Record stage timing from explicit core lifecycle events without printing twice."""
+        event_name = event.get("event")
+        stage_id = event.get("stage_id")
+        if event_name not in {"stage_started", "stage_completed", "stage_failed", "stage_cancelled"}:
+            return
+        matches = [i for i, stage in enumerate(self.stages) if stage.code == stage_id]
+        if not matches:
+            return
+        with self._lock:
+            self.index = matches[0]
+            stage = self.stages[self.index]
+            if event_name == "stage_started":
+                self.stage_started = time.perf_counter()
+                return
+            elapsed = time.perf_counter() - self.stage_started
+            status = {
+                "stage_completed": "PASS",
+                "stage_failed": "FAIL",
+                "stage_cancelled": "CANCELLED",
+            }[event_name]
+            self.records.append(
+                {
+                    "order": len(self.records) + 1,
+                    "stage_code": stage.code,
+                    "stage": stage.title,
+                    "status": status,
+                    "elapsed_seconds": round(elapsed, 6),
+                    "elapsed_display": _fmt_elapsed(elapsed),
+                    "summary": event.get("message", ""),
+                    "marker_artifact": stage.marker_suffix,
+                }
+            )
+            self.index += 1
+            self.stage_started = time.perf_counter()
+
     def artifact_written(self, path: Path) -> None:
-        """Advance stage when the marker artifact is actually persisted."""
+        """Legacy marker observer retained for compatibility; main() no longer installs it."""
         norm = Path(path).as_posix().lower()
         with self._lock:
             stage = self.current
@@ -548,31 +584,25 @@ class TerminalProgress:
                 print(f"          Time   : {_fmt_elapsed(elapsed)}", flush=True)
                 print(_hr(), flush=True)
 
-    def finalize_unobserved(self) -> None:
-        """Handle harmless marker-order differences across project revisions."""
+    def finalize_unknown(self) -> None:
+        """Record missing observations as UNKNOWN; never infer PASS from a successful return."""
         with self._lock:
-            while self.current is not None:
-                stage = self.current
-                elapsed = time.perf_counter() - self.stage_started
-                summary = stage.summary(self.context)
+            observed = {row["stage_code"] for row in self.records}
+            for stage in self.stages:
+                if stage.code in observed:
+                    continue
                 self.records.append(
                     {
                         "order": len(self.records) + 1,
                         "stage_code": stage.code,
                         "stage": stage.title,
-                        "status": "PASS",
-                        "elapsed_seconds": round(elapsed, 6),
-                        "elapsed_display": _fmt_elapsed(elapsed),
-                        "summary": summary,
+                        "status": "UNKNOWN",
+                        "elapsed_seconds": None,
+                        "elapsed_display": "unavailable",
+                        "summary": "No explicit stage completion event was observed.",
                         "marker_artifact": stage.marker_suffix,
                     }
                 )
-                print(_green(f"[PASS]    {stage.code:<6} {stage.title}"), flush=True)
-                print(f"          Result : {summary}", flush=True)
-                print(f"          Time   : {_fmt_elapsed(elapsed)}", flush=True)
-                print(_hr(), flush=True)
-                self.index += 1
-                self.stage_started = time.perf_counter()
 
 
 def _install_output_hooks(progress: TerminalProgress):
@@ -725,6 +755,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable periodic long-stage heartbeat messages.",
     )
+    parser.add_argument(
+        "--debuglog",
+        action="store_true",
+        help="Show detailed fold, trial, feature and split evidence (levels 3–4).",
+    )
     return parser.parse_args()
 
 
@@ -752,7 +787,6 @@ def main() -> int:
         heartbeat_enabled=not args.no_heartbeat,
     )
 
-    restore_hooks = _install_output_hooks(progress)
     progress.start()
     total_start = time.perf_counter()
 
@@ -761,11 +795,10 @@ def main() -> int:
             raw_path=raw_path,
             root=PROJECT_ROOT,
             workspace_root=None,
+            debuglog=args.debuglog,
+            on_audit_event=progress.observe,
         )
-        # In case a future core revision changes the exact final marker filename,
-        # complete remaining terminal records after successful return.
-        if progress.current is not None:
-            progress.finalize_unobserved()
+        progress.finalize_unknown()
 
         total_seconds = time.perf_counter() - total_start
         _save_terminal_timing(PROJECT_ROOT, progress.records, total_seconds)
@@ -787,7 +820,6 @@ def main() -> int:
 
     finally:
         progress.stop()
-        restore_hooks()
 
 
 if __name__ == "__main__":

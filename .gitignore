@@ -14,3 +14,8 @@ outputs/
 .ruff_cache/
 .vscode
 .flake8
+dist/
+*.egg-info/
+*.tmp
+*.swp
+.idea/

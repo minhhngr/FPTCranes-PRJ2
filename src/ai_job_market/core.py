@@ -48,6 +48,13 @@ from .segmentation_robustness import (
     transform_representation,
 )
 from .segmentation_stability import ResampleStabilityConfig, subsample_stability
+from .training_audit import (
+    active_audit,
+    dataframe_identity,
+    emit_event,
+    export_evidence_table,
+    start_training_audit,
+)
 
 TARGET = "annual_salary_usd"
 SOURCE_COLUMNS = [
@@ -138,9 +145,28 @@ def sha256_file(path: Path) -> str:
 
 
 def save_json(obj: Any, path: Path) -> None:
+    audit = active_audit()
+    if audit is not None:
+        emit_event(
+            "artifact_write_started",
+            step_id=f"artifact.json.{Path(path).name}",
+            operation="write_json",
+            status="started",
+            message="Starting JSON artifact write.",
+            extra={"artifact_path": str(path)},
+        )
     ensure_dir(path.parent)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2, default=_json_default)
+    if audit is not None:
+        emit_event(
+            "artifact_written",
+            step_id=f"artifact.json.{Path(path).name}",
+            operation="write_json",
+            status="completed",
+            message="JSON artifact write completed.",
+            extra={"artifact_path": str(path)},
+        )
 
 
 def _json_default(x: Any) -> Any:
@@ -158,8 +184,112 @@ def _json_default(x: Any) -> Any:
 
 
 def save_csv(df: pd.DataFrame, path: Path) -> None:
+    audit = active_audit()
+    if audit is not None:
+        emit_event(
+            "artifact_write_started",
+            step_id=f"artifact.csv.{Path(path).name}",
+            operation="write_csv",
+            status="started",
+            message="Starting CSV artifact write.",
+            extra={
+                "artifact_path": str(path),
+                "rows": int(len(df)),
+                "column_count": int(len(df.columns)),
+            },
+        )
     ensure_dir(path.parent)
     df.to_csv(path, index=False)
+    if audit is not None:
+        emit_event(
+            "artifact_written",
+            step_id=f"artifact.csv.{Path(path).name}",
+            operation="write_csv",
+            status="completed",
+            message="CSV artifact write completed.",
+            extra={"artifact_path": str(path), "rows": int(len(df))},
+        )
+
+
+def _audited_joblib_dump(obj: Any, path: Path, *, role: str) -> None:
+    step_id = f"artifact.joblib.{path.name}.write"
+    emit_event(
+        "operation_started",
+        step_id=step_id,
+        operation="write_joblib",
+        status="started",
+        message=f"Write {role} artifact.",
+        detail_level=3,
+        extra={"artifact_path": str(path), "artifact_role": role},
+    )
+    try:
+        joblib.dump(obj, path)
+    except BaseException as error:
+        status = "cancelled" if isinstance(error, KeyboardInterrupt) else "failed"
+        emit_event(
+            "operation_completed",
+            step_id=step_id,
+            operation="write_joblib",
+            status=status,
+            message=f"Could not complete {role} artifact write.",
+            detail_level=3,
+            extra={
+                "artifact_path": str(path),
+                "artifact_role": role,
+                "error_type": type(error).__name__,
+            },
+        )
+        raise
+    emit_event(
+        "operation_completed",
+        step_id=step_id,
+        operation="write_joblib",
+        status="completed",
+        message=f"Wrote {role} artifact.",
+        detail_level=3,
+        extra={"artifact_path": str(path), "artifact_role": role},
+    )
+
+
+def _audited_joblib_load(path: Path, *, role: str) -> Any:
+    step_id = f"artifact.joblib.{path.name}.read"
+    emit_event(
+        "operation_started",
+        step_id=step_id,
+        operation="read_joblib",
+        status="started",
+        message=f"Reload {role} artifact.",
+        detail_level=3,
+        extra={"artifact_path": str(path), "artifact_role": role},
+    )
+    try:
+        value = joblib.load(path)
+    except BaseException as error:
+        status = "cancelled" if isinstance(error, KeyboardInterrupt) else "failed"
+        emit_event(
+            "operation_completed",
+            step_id=step_id,
+            operation="read_joblib",
+            status=status,
+            message=f"Could not reload {role} artifact.",
+            detail_level=3,
+            extra={
+                "artifact_path": str(path),
+                "artifact_role": role,
+                "error_type": type(error).__name__,
+            },
+        )
+        raise
+    emit_event(
+        "operation_completed",
+        step_id=step_id,
+        operation="read_joblib",
+        status="completed",
+        message=f"Reloaded {role} artifact.",
+        detail_level=3,
+        extra={"artifact_path": str(path), "artifact_role": role},
+    )
+    return value
 
 
 def canonicalize_source_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -948,6 +1078,84 @@ def temporal_cv_splits(
     return out
 
 
+def _temporal_fold_audit_payload(
+    dev: pd.DataFrame, splits: list[tuple[np.ndarray, np.ndarray, str]], requested_folds: int
+) -> dict[str, Any]:
+    periods = pd.to_datetime(
+        dict(
+            year=dev["posting_year"].astype(int),
+            month=dev["posting_month"].astype(int),
+            day=1,
+        )
+    ).reset_index(drop=True)
+    row_digest = hashlib.sha256("|".join(map(str, range(len(dev)))).encode("utf-8")).hexdigest()
+    fold_rows: list[dict[str, Any]] = []
+    split_material: list[str] = []
+    for i, (tr, va, label) in enumerate(splits, start=1):
+        train_positions = list(map(int, tr))
+        validation_positions = list(map(int, va))
+        train_periods = (
+            periods.iloc[train_positions]
+            if train_positions
+            else pd.Series([], dtype="datetime64[ns]")
+        )
+        validation_periods = (
+            periods.iloc[validation_positions]
+            if validation_positions
+            else pd.Series([], dtype="datetime64[ns]")
+        )
+        train_months = {p.strftime("%Y-%m") for p in train_periods}
+        validation_months = {p.strftime("%Y-%m") for p in validation_periods}
+        row_overlap = sorted(set(train_positions) & set(validation_positions))
+        shared_periods = sorted(train_months & validation_months)
+        split_material.append(
+            ",".join(map(str, train_positions)) + ":" + ",".join(map(str, validation_positions))
+        )
+        fold_rows.append(
+            {
+                "fold_id": int(i),
+                "validation_period": label,
+                "train_positions": train_positions,
+                "validation_positions": validation_positions,
+                "train_rows": int(len(train_positions)),
+                "validation_rows": int(len(validation_positions)),
+                "train_period_min": min(train_months) if train_months else None,
+                "train_period_max": max(train_months) if train_months else None,
+                "validation_period_min": min(validation_months) if validation_months else None,
+                "validation_period_max": max(validation_months) if validation_months else None,
+                "row_overlap_count": int(len(row_overlap)),
+                "row_overlap_positions": row_overlap,
+                "shared_periods": shared_periods,
+            }
+        )
+    split_id = hashlib.sha256("|".join(split_material).encode("utf-8")).hexdigest()
+    return {
+        "split_id": split_id,
+        "dataset_id": dataframe_identity(dev),
+        "dataset_identity_method": "pandas_hash_content_columns_index_v1",
+        "dataset_row_order_sha256": row_digest,
+        "dataset_row_order_digest_scope": "positions_only_legacy",
+        "sort_policy": "posting_year, posting_month stable mergesort",
+        "requested_folds": int(requested_folds),
+        "effective_folds": int(len(splits)),
+        "folds": fold_rows,
+    }
+
+
+def _audit_start_stage(stage_id: str, title: str) -> None:
+    audit = active_audit()
+    if audit is not None:
+        audit.start_stage(stage_id, title)
+
+
+def _audit_complete_stage(
+    stage_id: str, title: str, *, extra: dict[str, Any] | None = None
+) -> None:
+    audit = active_audit()
+    if audit is not None:
+        audit.complete_stage(stage_id, title, extra=extra)
+
+
 def regression_metrics(y_true, y_pred) -> dict[str, float]:
     return {
         "MAE": float(mean_absolute_error(y_true, y_pred)),
@@ -963,15 +1171,180 @@ def evaluate_model_cv(
     X = dev[features]
     y = dev[TARGET]
     rows = []
-    for i, (tr, va, label) in enumerate(temporal_cv_splits(dev, n_splits), start=1):
+    audit = active_audit()
+    evaluation_id = f"eval-{audit.sequence + 1:04d}" if audit is not None else None
+    emit_event(
+        "evaluation_started",
+        step_id=f"evaluation.{evaluation_id or model_name}.start",
+        operation="temporal_cv_evaluation",
+        status="started",
+        message=f"Evaluate {model_name} with temporal cross-validation.",
+        detail_level=1,
+        extra={
+            "evaluation_id": evaluation_id,
+            "model_name": model_name,
+            "target": TARGET,
+            "features": list(map(str, features)),
+            "requested_folds": int(n_splits),
+            "estimator_params": clone(model).get_params(deep=False),
+        },
+    )
+    splits = temporal_cv_splits(dev, n_splits)
+    if audit is not None:
+        split_payload = _temporal_fold_audit_payload(dev, splits, n_splits)
+        if audit.should_emit_split_definition(
+            f"{split_payload['dataset_id']}:{split_payload['split_id']}"
+        ):
+            emit_event(
+                "split_defined",
+                step_id=f"cv.{evaluation_id}.split",
+                operation="temporal_cv_split",
+                status="completed",
+                message="Temporal CV split definition recorded.",
+                detail_level=4,
+                extra={"evaluation_id": evaluation_id, "model_name": model_name, **split_payload},
+            )
+            membership_rows = []
+            for fold_info in split_payload["folds"]:
+                for role, positions in (
+                    ("train", fold_info["train_positions"]),
+                    ("validation", fold_info["validation_positions"]),
+                ):
+                    membership_rows.extend(
+                        {
+                            "dataset_id": split_payload["dataset_id"],
+                            "split_id": split_payload["split_id"],
+                            "fold_id": fold_info["fold_id"],
+                            "role": role,
+                            "position": position,
+                        }
+                        for position in positions
+                    )
+            export_evidence_table(
+                f"membership-{split_payload['dataset_id'][:12]}-{split_payload['split_id'][:12]}",
+                membership_rows,
+                kind="fold_membership",
+                detail_level=4,
+            )
+        else:
+            emit_event(
+                "split_used",
+                step_id=f"cv.{evaluation_id}.split",
+                operation="temporal_cv_split",
+                status="completed",
+                message="Previously recorded temporal CV split reused.",
+                detail_level=4,
+                extra={
+                    "evaluation_id": evaluation_id,
+                    "model_name": model_name,
+                    "dataset_id": split_payload["dataset_id"],
+                    "split_id": split_payload["split_id"],
+                    "requested_folds": int(n_splits),
+                    "effective_folds": int(len(splits)),
+                },
+            )
+        export_evidence_table(
+            f"features-{evaluation_id}",
+            [
+                {
+                    "evaluation_id": evaluation_id,
+                    "scope": "raw_model_input",
+                    "feature_order": order,
+                    "feature_name": feature,
+                    "role": "input",
+                    "policy_reason": "actual evaluation feature",
+                }
+                for order, feature in enumerate(features, start=1)
+            ],
+            kind="feature_inventory",
+            detail_level=4,
+        )
+    for i, (tr, va, label) in enumerate(splits, start=1):
         pipe = make_model_pipeline(clone(model), features)
+        emit_event(
+            "operation_started",
+            step_id=f"cv.{evaluation_id or model_name}.fold{i}.fit",
+            operation="preprocess_and_fit",
+            status="started",
+            message="Starting preprocessing and model fit.",
+            detail_level=3,
+            extra={
+                "evaluation_id": evaluation_id,
+                "model_name": model_name,
+                "fold_id": int(i),
+                "validation_period": label,
+                "train_rows": int(len(tr)),
+                "validation_rows": int(len(va)),
+                "features": list(map(str, features)),
+                "estimator_params": clone(model).get_params(deep=False),
+                "preprocessor_fit_scope": "fold training only",
+            },
+        )
         t0 = time.perf_counter()
         pipe.fit(X.iloc[tr], y.iloc[tr])
         fit_s = time.perf_counter() - t0
+        encoded_feature_count = int(len(pipe.named_steps["preprocess"].get_feature_names_out()))
+        emit_event(
+            "operation_completed",
+            step_id=f"cv.{evaluation_id or model_name}.fold{i}.fit",
+            operation="preprocess_and_fit",
+            status="completed",
+            message="Preprocessing and model fit completed.",
+            detail_level=3,
+            extra={
+                "evaluation_id": evaluation_id,
+                "model_name": model_name,
+                "fold_id": int(i),
+                "elapsed_s": fit_s,
+                "encoded_feature_count": encoded_feature_count,
+            },
+        )
+        emit_event(
+            "operation_started",
+            step_id=f"cv.{evaluation_id or model_name}.fold{i}.predict",
+            operation="predict_validation",
+            status="started",
+            message="Starting validation prediction.",
+            detail_level=3,
+            extra={"evaluation_id": evaluation_id, "model_name": model_name, "fold_id": int(i)},
+        )
         t1 = time.perf_counter()
         pred = pipe.predict(X.iloc[va])
         predict_s = time.perf_counter() - t1
+        emit_event(
+            "operation_completed",
+            step_id=f"cv.{evaluation_id or model_name}.fold{i}.predict",
+            operation="predict_validation",
+            status="completed",
+            message="Validation prediction completed.",
+            detail_level=3,
+            extra={
+                "evaluation_id": evaluation_id,
+                "model_name": model_name,
+                "fold_id": int(i),
+                "elapsed_s": predict_s,
+            },
+        )
         met = regression_metrics(y.iloc[va], pred)
+        emit_event(
+            "candidate_fold_scored",
+            step_id=f"cv.{evaluation_id or model_name}.fold{i}.score",
+            operation="score_validation_fold",
+            status="completed",
+            message="Validation fold metrics recorded.",
+            detail_level=3,
+            extra={
+                "evaluation_id": evaluation_id,
+                "model_name": model_name,
+                "fold_id": int(i),
+                "validation_period": label,
+                "train_rows": int(len(tr)),
+                "validation_rows": int(len(va)),
+                "partition": "development_temporal_validation",
+                "metric_units": {"MAE": "USD", "RMSE": "USD", "R2": "unitless", "MedAE": "USD"},
+                **met,
+            },
+        )
         rows.append(
             {
                 "model": model_name,
@@ -996,6 +1369,36 @@ def evaluate_model_cv(
         "predict_time_mean_s": float(fold.predict_time_s.mean()),
         "folds": int(len(fold)),
     }
+    emit_event(
+        "evaluation_completed",
+        step_id=f"evaluation.{evaluation_id or model_name}.end",
+        operation="temporal_cv_evaluation",
+        status="completed",
+        message=f"Completed temporal cross-validation for {model_name}.",
+        detail_level=2,
+        extra={
+            "evaluation_id": evaluation_id,
+            "model_name": model_name,
+            **summary,
+            "RMSE_std": float(fold.RMSE.std(ddof=0)),
+            "R2_std": float(fold.R2.std(ddof=0)),
+            "MedAE_std": float(fold.MedAE.std(ddof=0)),
+            "aggregation": "arithmetic mean and population standard deviation (ddof=0)",
+            "partition": "development_temporal_validation",
+            "metric_units": {"MAE": "USD", "RMSE": "USD", "R2": "unitless", "MedAE": "USD"},
+            "train_metrics_status": "not_computed",
+            "locked_test_metrics_status": "not_evaluated",
+            "fit_assessment": "insufficient_evidence",
+            "fit_reason": "training_scores_not_computed; diagnostic_rule_not_defined",
+        },
+    )
+    if audit is not None:
+        export_evidence_table(
+            f"metrics-{evaluation_id}",
+            fold.to_dict("records"),
+            kind="metric_details",
+            detail_level=4,
+        )
     return fold, summary
 
 
@@ -1097,10 +1500,79 @@ def random_forest_importance_by_fold(
     base = RandomForestRegressor(
         n_estimators=180, min_samples_leaf=2, max_features=0.8, random_state=seed, n_jobs=1
     )
-    for fold, (tr, va, label) in enumerate(temporal_cv_splits(dev, n_splits), 1):
+    splits = temporal_cv_splits(dev, n_splits)
+    audit = active_audit()
+    if audit is not None:
+        split_payload = _temporal_fold_audit_payload(dev, splits, n_splits)
+        if audit.should_emit_split_definition(str(split_payload["split_id"])):
+            emit_event(
+                "split_defined",
+                step_id="importance.rf.split",
+                operation="temporal_cv_split",
+                status="completed",
+                message="Temporal CV split definition recorded for feature-importance fits.",
+                extra={
+                    "model_name": "Random Forest importance",
+                    "metrics_status": "not_computed",
+                    **split_payload,
+                },
+            )
+        else:
+            emit_event(
+                "split_used",
+                step_id="importance.rf.split",
+                operation="temporal_cv_split",
+                status="completed",
+                message="Previously recorded temporal CV split reused for feature-importance fits.",
+                extra={
+                    "model_name": "Random Forest importance",
+                    "metrics_status": "not_computed",
+                    "split_id": split_payload["split_id"],
+                    "requested_folds": int(n_splits),
+                    "effective_folds": int(len(splits)),
+                },
+            )
+    for fold, (tr, va, label) in enumerate(splits, 1):
         pipe = make_model_pipeline(clone(base), MODEL_FEATURES)
+        emit_event(
+            "operation_started",
+            step_id=f"importance.rf.fold{fold}.fit",
+            operation="preprocess_and_fit",
+            status="started",
+            message="Starting feature-importance fold fit.",
+            extra={
+                "model_name": "Random Forest importance",
+                "fold_id": int(fold),
+                "validation_period": label,
+                "train_rows": int(len(tr)),
+                "validation_rows": int(len(va)),
+                "metrics_status": "not_computed",
+            },
+        )
+        t0 = time.perf_counter()
         pipe.fit(X.iloc[tr], y.iloc[tr])
+        fit_s = time.perf_counter() - t0
+        emit_event(
+            "operation_completed",
+            step_id=f"importance.rf.fold{fold}.fit",
+            operation="preprocess_and_fit",
+            status="completed",
+            message="Feature-importance fold fit completed.",
+            extra={"fold_id": int(fold), "elapsed_s": fit_s, "metrics_status": "not_computed"},
+        )
         imp = extract_encoded_importance(pipe)
+        emit_event(
+            "operation_completed",
+            step_id=f"importance.rf.fold{fold}.extract",
+            operation="extract_encoded_importance",
+            status="completed",
+            message="Encoded feature importance extracted.",
+            extra={
+                "fold_id": int(fold),
+                "encoded_feature_count": int(len(imp)),
+                "metrics_status": "not_computed",
+            },
+        )
         imp["fold"] = fold
         imp["validation_period"] = label
         rows.append(imp)
@@ -1146,8 +1618,34 @@ def encoded_correlations_train(
 ) -> pd.DataFrame:
     features = features or MODEL_FEATURES
     prep = make_salary_preprocessor(features)
+    emit_event(
+        "operation_started",
+        step_id="readiness.encoded_correlations.fit_transform",
+        operation="fit_transform_for_encoded_correlations",
+        status="started",
+        message="Fit preprocessing on DEV and transform DEV for descriptive encoded correlations.",
+        detail_level=3,
+        extra={
+            "train_rows": int(len(dev)),
+            "features": list(features),
+            "fit_scope": "development only",
+        },
+    )
     z = prep.fit_transform(dev[features])
     names = prep.get_feature_names_out()
+    emit_event(
+        "operation_completed",
+        step_id="readiness.encoded_correlations.fit_transform",
+        operation="fit_transform_for_encoded_correlations",
+        status="completed",
+        message="DEV-only preprocessing and correlation transform completed.",
+        detail_level=3,
+        extra={
+            "train_rows": int(len(dev)),
+            "encoded_feature_count": int(len(names)),
+            "fit_scope": "development only",
+        },
+    )
     y = dev[TARGET].to_numpy(dtype=float)
     rows = []
     for i, n in enumerate(names):
@@ -1679,11 +2177,48 @@ def run_segmentation(
 
     # Shared DEV-fitted primitive encoders/scalers. Target/salary never enters
     # either O1 or O2.
+    emit_event(
+        "operation_started",
+        step_id="segmentation.encoder.fit",
+        operation="fit_segmentation_encoder",
+        status="started",
+        message="Fit the family-balanced segmentation encoder on DEV only.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "train_rows": int(len(dev)),
+            "features": SEGMENTATION_FEATURES,
+            "target_used": False,
+        },
+    )
     encoder = FamilyBalancedEncoder(balance=True).fit(dev[SEGMENTATION_FEATURES])
+    emit_event(
+        "operation_completed",
+        step_id="segmentation.encoder.fit",
+        operation="fit_segmentation_encoder",
+        status="completed",
+        message="Family-balanced segmentation encoder fitted on DEV.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "train_rows": int(len(dev)),
+            "encoded_dimensions": int(sum(encoder.family_dims_.values())),
+            "target_used": False,
+        },
+    )
 
     # ------------------------------------------------------------------
     # O1 — PCA-based representation family (R0-R4)
     # ------------------------------------------------------------------
+    emit_event(
+        "operation_started",
+        step_id="segmentation.o1.representations",
+        operation="build_segmentation_representations",
+        status="started",
+        message="Build O1 PCA representation candidates R0–R4 from DEV-fitted encodings.",
+        detail_level=2,
+        extra={"stage_id": "A1-A8"},
+    )
     reps = build_representation_specs(
         encoder=encoder,
         X_dev=dev[SEGMENTATION_FEATURES],
@@ -1693,6 +2228,19 @@ def run_segmentation(
         family_caps=familywise_caps,
         seed=seed,
         global_max_components=pca_max_components,
+    )
+    emit_event(
+        "operation_completed",
+        step_id="segmentation.o1.representations",
+        operation="build_segmentation_representations",
+        status="completed",
+        message=f"Built {len(reps)} O1 representation candidates.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "representations": list(reps),
+            "representation_count": int(len(reps)),
+        },
     )
 
     resample_cfg = ResampleStabilityConfig(
@@ -1709,6 +2257,20 @@ def run_segmentation(
     selected_dev_labels: dict[str, np.ndarray] = {}
 
     for rep_id, rep_i in reps.items():
+        emit_event(
+            "operation_started",
+            step_id=f"segmentation.o1.{rep_id}.evaluate",
+            operation="evaluate_segmentation_candidates",
+            status="started",
+            message=f"Evaluate segmentation candidates for {rep_id}.",
+            detail_level=3,
+            extra={
+                "stage_id": "A1-A8",
+                "representation_id": rep_id,
+                "dev_rows": int(len(dev)),
+                "dimensions": int(rep_i.dev_matrix.shape[1]),
+            },
+        )
         ev_i, rs_i, cand_i, summary_i, model_i, labels_dev_i, labels_all_i = evaluate_candidates(
             rep_i.dev_matrix,
             rep_i.all_matrix,
@@ -1722,6 +2284,22 @@ def run_segmentation(
             silhouette_tolerance=float(silhouette_tolerance),
             resample_config=resample_cfg,
             full_stability=True,
+        )
+        emit_event(
+            "operation_completed",
+            step_id=f"segmentation.o1.{rep_id}.evaluate",
+            operation="evaluate_segmentation_candidates",
+            status="completed",
+            message=f"Evaluated segmentation candidates for {rep_id}.",
+            detail_level=3,
+            extra={
+                "stage_id": "A1-A8",
+                "representation_id": rep_id,
+                "candidate_rows": int(len(ev_i)),
+                "selected_algorithm": summary_i.get("algorithm"),
+                "selected_k": summary_i.get("k"),
+                "selected_silhouette": summary_i.get("silhouette"),
+            },
         )
         ev_i["representation_label"] = rep_i.label
         all_eval.append(ev_i)
@@ -1773,6 +2351,19 @@ def run_segmentation(
     o1_rep = reps[o1_rep_id]
 
     # Exhaustive official O1 K study.
+    emit_event(
+        "operation_started",
+        step_id="segmentation.o1.official.evaluate",
+        operation="evaluate_official_o1_candidates",
+        status="started",
+        message=f"Run the official O1 candidate study for {o1_rep_id}.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "representation_id": o1_rep_id,
+            "dimensions": int(o1_rep.dev_matrix.shape[1]),
+        },
+    )
     (
         o1_ev,
         o1_rs,
@@ -1796,16 +2387,68 @@ def run_segmentation(
         full_stability=True,
     )
     o1_ev["representation_label"] = o1_rep.label
+    emit_event(
+        "operation_completed",
+        step_id="segmentation.o1.official.evaluate",
+        operation="evaluate_official_o1_candidates",
+        status="completed",
+        message="Official O1 candidate study completed.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "representation_id": o1_rep_id,
+            "candidate_rows": int(len(o1_ev)),
+            "selected_algorithm": o1_summary.get("algorithm"),
+            "selected_k": o1_summary.get("k"),
+            "selected_silhouette": o1_summary.get("silhouette"),
+        },
+    )
 
     # ------------------------------------------------------------------
     # O2 — correlation-based feature selection on family-balanced X
     # ------------------------------------------------------------------
+    emit_event(
+        "operation_started",
+        step_id="segmentation.o2.selection",
+        operation="build_correlation_selected_space",
+        status="started",
+        message="Build O2 correlation-selected feature space from DEV-fitted encodings.",
+        detail_level=2,
+        extra={"stage_id": "A1-A8", "correlation_threshold": float(correlation_threshold)},
+    )
     o2 = _build_correlation_selected_space(
         encoder,
         dev[SEGMENTATION_FEATURES],
         all_df[SEGMENTATION_FEATURES],
         threshold=float(correlation_threshold),
         seed=int(seed),
+    )
+    emit_event(
+        "operation_completed",
+        step_id="segmentation.o2.selection",
+        operation="build_correlation_selected_space",
+        status="completed",
+        message="Built O2 correlation-selected feature space.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "encoded_features_before": int(o2["encoded_features_before"]),
+            "selected_encoded_features": int(o2["selected_encoded_features"]),
+            "correlation_threshold": float(correlation_threshold),
+        },
+    )
+    emit_event(
+        "operation_started",
+        step_id="segmentation.o2.evaluate",
+        operation="evaluate_segmentation_candidates",
+        status="started",
+        message="Evaluate O2 segmentation candidates.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "representation_id": "O2_CORRELATION_SELECTED",
+            "dimensions": int(o2["dev_matrix"].shape[1]),
+        },
     )
     (
         o2_ev,
@@ -1828,6 +2471,21 @@ def run_segmentation(
         silhouette_tolerance=float(silhouette_tolerance),
         resample_config=resample_cfg,
         full_stability=True,
+    )
+    emit_event(
+        "operation_completed",
+        step_id="segmentation.o2.evaluate",
+        operation="evaluate_segmentation_candidates",
+        status="completed",
+        message="O2 segmentation candidate evaluation completed.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "candidate_rows": int(len(o2_ev)),
+            "selected_algorithm": o2_summary.get("algorithm"),
+            "selected_k": o2_summary.get("k"),
+            "selected_silhouette": o2_summary.get("silhouette"),
+        },
     )
 
     # ------------------------------------------------------------------
@@ -1886,6 +2544,20 @@ def run_segmentation(
     selected_option_id, option_summary, option_decision = _choose_feature_space_option(
         option_summary,
         silhouette_tolerance=float(representation_silhouette_tolerance),
+    )
+    emit_event(
+        "selection_recorded",
+        step_id="segmentation.option.selection",
+        operation="select_segmentation_feature_space",
+        status="completed",
+        message=f"Selected segmentation feature-space option {selected_option_id}.",
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "selected_option_id": selected_option_id,
+            "selection_policy": "eligible near-best silhouette, robustness, balance and parsimony",
+            "cross_option_ari": cross_option_ari,
+        },
     )
 
     if selected_option_id == "O1_PCA":
@@ -2522,6 +3194,76 @@ def predict_segments(segmentation_bundle: dict[str, Any], df: pd.DataFrame) -> n
 def tune_random_forest_manual_steps(
     dev: pd.DataFrame, n_splits: int = 5, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    trial_counter = 0
+
+    def evaluate_trial(
+        group: str,
+        ordinal: int,
+        total: int,
+        label: str,
+        trial_model: BaseEstimator,
+    ) -> dict[str, float]:
+        nonlocal trial_counter
+        trial_counter += 1
+        trial_id = f"rf-{group}-{ordinal}"
+        emit_event(
+            "trial_started",
+            step_id=f"tuning.{trial_id}",
+            operation="evaluate_rf_tuning_trial",
+            status="started",
+            message=f"Evaluate Random Forest tuning trial {ordinal}/{total} for {group}.",
+            detail_level=2,
+            extra={
+                "stage_id": "B5-B6",
+                "trial_id": trial_id,
+                "trial_ordinal": int(trial_counter),
+                "group": group,
+                "group_ordinal": int(ordinal),
+                "group_total": int(total),
+                "seed": int(seed),
+                "estimator_params": trial_model.get_params(deep=False),
+            },
+        )
+        try:
+            _, trial_summary = evaluate_model_cv(dev, MODEL_FEATURES, label, trial_model, n_splits)
+        except BaseException as error:
+            status = "cancelled" if isinstance(error, KeyboardInterrupt) else "failed"
+            emit_event(
+                f"trial_{status}",
+                step_id=f"tuning.{trial_id}",
+                operation="evaluate_rf_tuning_trial",
+                status=status,
+                message=f"Random Forest tuning trial {ordinal}/{total} for {group} did not complete.",
+                detail_level=2,
+                extra={
+                    "stage_id": "B5-B6",
+                    "trial_id": trial_id,
+                    "group": group,
+                    "error_type": type(error).__name__,
+                },
+            )
+            raise
+        emit_event(
+            "trial_completed",
+            step_id=f"tuning.{trial_id}",
+            operation="evaluate_rf_tuning_trial",
+            status="completed",
+            message=f"Completed Random Forest tuning trial {ordinal}/{total} for {group}.",
+            detail_level=2,
+            extra={
+                "stage_id": "B5-B6",
+                "trial_id": trial_id,
+                "trial_ordinal": int(trial_counter),
+                "group": group,
+                "group_ordinal": int(ordinal),
+                "group_total": int(total),
+                "seed": int(seed),
+                "estimator_params": trial_model.get_params(deep=False),
+                **trial_summary,
+            },
+        )
+        return trial_summary
+
     # Bước 1: Initial Grid Search với các bộ thông số mẫu bao phủ 4 thông số chính
     configs = [
         {"n_estimators": 300, "min_samples_leaf": 2, "max_features": 0.7, "max_depth": 20},
@@ -2532,7 +3274,7 @@ def tune_random_forest_manual_steps(
     rows1 = []
     for i, p in enumerate(configs, 1):
         model = RandomForestRegressor(random_state=seed, n_jobs=-1, **p)
-        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF tune {i}", model, n_splits)
+        s = evaluate_trial("initial-grid", i, len(configs), f"RF tune {i}", model)
         rows1.append(
             {
                 "candidate": i,
@@ -2545,6 +3287,18 @@ def tune_random_forest_manual_steps(
             }
         )
     df1 = pd.DataFrame(rows1).sort_values("CV_R2", ascending=False).reset_index(drop=True)
+    emit_event(
+        "candidate_completed",
+        step_id="tuning.rf.step1",
+        operation="rank_rf_initial_grid",
+        status="completed",
+        message="Random Forest initial grid candidates ranked by CV R2.",
+        extra={
+            "ranking_metric": "CV_R2",
+            "ranking_direction": "descending",
+            "candidates": df1.to_dict("records"),
+        },
+    )
 
     # Bước 2: Thông số 1 — Tinh chỉnh n_estimators (giữ nguyên min_samples_leaf, max_features, max_depth từ Bước 1)
     best_init = df1.iloc[0]
@@ -2560,7 +3314,7 @@ def tune_random_forest_manual_steps(
             random_state=seed,
             n_jobs=-1,
         )
-        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF n_{n}", model, n_splits)
+        s = evaluate_trial("n-estimators", len(rows2) + 1, len(n_vals), f"RF n_{n}", model)
         rows2.append(
             {
                 "n_estimators": n,
@@ -2575,6 +3329,18 @@ def tune_random_forest_manual_steps(
             }
         )
     df2 = pd.DataFrame(rows2).sort_values("CV_R2", ascending=False).reset_index(drop=True)
+    emit_event(
+        "candidate_completed",
+        step_id="tuning.rf.step2",
+        operation="rank_rf_n_estimators",
+        status="completed",
+        message="Random Forest n_estimators candidates ranked by CV R2.",
+        extra={
+            "ranking_metric": "CV_R2",
+            "ranking_direction": "descending",
+            "candidates": df2.to_dict("records"),
+        },
+    )
 
     # Bước 3: Thông số 2 — Tinh chỉnh max_depth (chọn n*=200 từ Bước 2, giữ nguyên các tham số còn lại)
     best_n = int(df2.iloc[0].n_estimators)
@@ -2589,7 +3355,7 @@ def tune_random_forest_manual_steps(
             random_state=seed,
             n_jobs=-1,
         )
-        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF depth_{d}", model, n_splits)
+        s = evaluate_trial("max-depth", len(rows3) + 1, len(depth_vals), f"RF depth_{d}", model)
         depth_str = "None" if d is None else str(d)
         rows3.append(
             {
@@ -2605,6 +3371,18 @@ def tune_random_forest_manual_steps(
             }
         )
     df3 = pd.DataFrame(rows3).sort_values("CV_R2", ascending=False).reset_index(drop=True)
+    emit_event(
+        "candidate_completed",
+        step_id="tuning.rf.step3",
+        operation="rank_rf_max_depth",
+        status="completed",
+        message="Random Forest max_depth candidates ranked by CV R2.",
+        extra={
+            "ranking_metric": "CV_R2",
+            "ranking_direction": "descending",
+            "candidates": df3.to_dict("records"),
+        },
+    )
 
     # Bước 4: Thông số 3 — Tinh chỉnh min_samples_leaf (cố định n*=200, depth*=20, max_features=0.7)
     best_d_val = 20
@@ -2619,7 +3397,9 @@ def tune_random_forest_manual_steps(
             random_state=seed,
             n_jobs=-1,
         )
-        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF leaf_{leaf}", model, n_splits)
+        s = evaluate_trial(
+            "min-samples-leaf", len(rows4) + 1, len(leaf_vals), f"RF leaf_{leaf}", model
+        )
         rows4.append(
             {
                 "n_estimators": best_n,
@@ -2634,6 +3414,19 @@ def tune_random_forest_manual_steps(
             }
         )
     df4 = pd.DataFrame(rows4).sort_values("CV_R2", ascending=False).reset_index(drop=True)
+    emit_event(
+        "candidate_completed",
+        step_id="tuning.rf.step4",
+        operation="rank_rf_min_samples_leaf",
+        status="completed",
+        message="Random Forest min_samples_leaf candidates ranked by CV R2.",
+        extra={
+            "ranking_metric": "CV_R2",
+            "ranking_direction": "descending",
+            "fixed_max_depth": 20,
+            "candidates": df4.to_dict("records"),
+        },
+    )
     best_leaf = int(df4.iloc[0].min_samples_leaf)
 
     # Bước 5: Thông số 4 — Tinh chỉnh max_features (cố định n*=200, depth*=20, leaf*=1)
@@ -2648,7 +3441,7 @@ def tune_random_forest_manual_steps(
             random_state=seed,
             n_jobs=-1,
         )
-        _, s = evaluate_model_cv(dev, MODEL_FEATURES, f"RF feat_{feat}", model, n_splits)
+        s = evaluate_trial("max-features", len(rows5) + 1, len(feat_vals), f"RF feat_{feat}", model)
         rows5.append(
             {
                 "n_estimators": best_n,
@@ -2663,6 +3456,19 @@ def tune_random_forest_manual_steps(
             }
         )
     df5 = pd.DataFrame(rows5).sort_values("CV_R2", ascending=False).reset_index(drop=True)
+    emit_event(
+        "candidate_completed",
+        step_id="tuning.rf.step5",
+        operation="rank_rf_max_features",
+        status="completed",
+        message="Random Forest max_features candidates ranked by CV R2.",
+        extra={
+            "ranking_metric": "CV_R2",
+            "ranking_direction": "descending",
+            "fixed_max_depth": 20,
+            "candidates": df5.to_dict("records"),
+        },
+    )
     best_feat = float(df5.iloc[0].max_features)
 
     # Bảng tổng kết 4 thông số đã tối ưu
@@ -2701,6 +3507,28 @@ def tune_random_forest_manual_steps(
         },
     ]
     df_sum = pd.DataFrame(summary_rows)
+    for evidence_id, table in (
+        ("tuning-step1-initial-grid", df1),
+        ("tuning-step2-n-estimators", df2),
+        ("tuning-step3-max-depth", df3),
+        ("tuning-step4-min-samples-leaf", df4),
+        ("tuning-step5-max-features", df5),
+        ("tuning-summary", df_sum),
+    ):
+        export_evidence_table(evidence_id, table, kind="tuning_trials", detail_level=4)
+    emit_event(
+        "selection_recorded",
+        step_id="tuning.rf.summary",
+        operation="record_rf_manual_tuning_summary",
+        status="completed",
+        message="Random Forest manual tuning summary recorded without changing selection behavior.",
+        extra={
+            "ranking_metric": "CV_R2",
+            "ranking_direction": "descending",
+            "fixed_max_depth": 20,
+            "summary": df_sum.to_dict("records"),
+        },
+    )
 
     return df1, df2, df3, df4, df5, df_sum
 
@@ -2716,7 +3544,7 @@ def final_model_from_selection(
     if best_family == "Random Forest" and tuning is not None and len(tuning):
         r = tuning.iloc[0]
         depth = None if pd.isna(r["max_depth"]) else int(r["max_depth"])
-        return RandomForestRegressor(
+        model = RandomForestRegressor(
             n_estimators=int(r.n_estimators),
             min_samples_leaf=int(r.min_samples_leaf),
             max_features=float(r.max_features),
@@ -2724,7 +3552,33 @@ def final_model_from_selection(
             random_state=seed,
             n_jobs=1,
         )
-    return clone(candidate_models(seed)[best_family])
+        emit_event(
+            "selection_recorded",
+            step_id="selection.final_estimator",
+            operation="create_final_estimator",
+            status="completed",
+            message="Final estimator parameters recorded.",
+            extra={
+                "best_family": best_family,
+                "selection_source": "provided_tuning_table_first_row",
+                "estimator_params": model.get_params(deep=False),
+            },
+        )
+        return model
+    model = clone(candidate_models(seed)[best_family])
+    emit_event(
+        "selection_recorded",
+        step_id="selection.final_estimator",
+        operation="create_final_estimator",
+        status="completed",
+        message="Final estimator parameters recorded.",
+        extra={
+            "best_family": best_family,
+            "selection_source": "candidate_family_default",
+            "estimator_params": model.get_params(deep=False),
+        },
+    )
+    return model
 
 
 def extract_encoded_importance(pipe: Pipeline) -> pd.DataFrame:
@@ -2748,15 +3602,100 @@ def finalize_salary_model(
     dev: pd.DataFrame, test: pd.DataFrame, model: BaseEstimator, seed: int = 42
 ) -> tuple[Pipeline, dict[str, Any], dict[str, pd.DataFrame]]:
     pipe = make_model_pipeline(model, MODEL_FEATURES)
+    emit_event(
+        "operation_started",
+        step_id="final.dev_fit",
+        operation="preprocess_and_fit_development",
+        status="started",
+        message="Starting final development fit.",
+        detail_level=2,
+        extra={
+            "model_name": type(model).__name__,
+            "train_rows": int(len(dev)),
+            "test_rows": int(len(test)),
+            "features": MODEL_FEATURES,
+            "fit_scope": "development only",
+            "estimator_params": model.get_params(deep=False),
+        },
+    )
+    t0 = time.perf_counter()
     pipe.fit(dev[MODEL_FEATURES], dev[TARGET])
+    fit_s = time.perf_counter() - t0
+    emit_event(
+        "operation_completed",
+        step_id="final.dev_fit",
+        operation="preprocess_and_fit_development",
+        status="completed",
+        message="Final development fit completed.",
+        extra={"elapsed_s": fit_s, "train_rows": int(len(dev))},
+    )
+    emit_event(
+        "operation_started",
+        step_id="final.locked_test_predict",
+        operation="predict_locked_test",
+        status="started",
+        message="Starting locked-test prediction.",
+        extra={"locked_test_rows": int(len(test))},
+    )
+    t1 = time.perf_counter()
     pred = np.asarray(pipe.predict(test[MODEL_FEATURES]), dtype=float)
+    predict_s = time.perf_counter() - t1
+    emit_event(
+        "operation_completed",
+        step_id="final.locked_test_predict",
+        operation="predict_locked_test",
+        status="completed",
+        message="Locked-test prediction completed.",
+        extra={"elapsed_s": predict_s, "locked_test_rows": int(len(test))},
+    )
     met = regression_metrics(test[TARGET], pred)
+    emit_event(
+        "operation_completed",
+        step_id="final.locked_test_score",
+        operation="score_locked_test",
+        status="completed",
+        message="Locked-test metrics recorded for the selected model only.",
+        detail_level=2,
+        extra={
+            "model_name": type(model).__name__,
+            "partition": "locked_test",
+            "evaluation_scope": "selected model only",
+            "metric_units": {"MAE": "USD", "RMSE": "USD", "R2": "unitless", "MedAE": "USD"},
+            "fit_assessment": "insufficient_evidence",
+            "fit_reason": "training_scores_not_computed; diagnostic_rule_not_defined",
+            **met,
+        },
+    )
     abs_err = np.abs(test[TARGET].to_numpy(dtype=float) - pred)
     met["prediction_interval_abs_error_q90"] = float(np.quantile(abs_err, 0.90))
+    emit_event(
+        "data_summary",
+        step_id="final.empirical_error_band",
+        operation="summarize_locked_test_absolute_error",
+        status="completed",
+        message="Computed the existing empirical locked-test absolute-error q90; this is not calibrated coverage.",
+        detail_level=2,
+        extra={
+            "partition": "locked_test",
+            "rows": int(len(test)),
+            "prediction_interval_abs_error_q90": met["prediction_interval_abs_error_q90"],
+            "units": "USD",
+            "interpretation": "empirical absolute-error quantile, not calibrated interval coverage",
+        },
+    )
     pred_df = test.copy()
     pred_df["predicted_salary_usd"] = pred
     pred_df["residual_usd"] = test[TARGET].to_numpy(dtype=float) - pred
     pred_df["absolute_error_usd"] = abs_err
+    emit_event(
+        "operation_started",
+        step_id="final.permutation_importance",
+        operation="compute_locked_test_permutation_importance",
+        status="started",
+        message="Starting locked-test permutation importance diagnostics.",
+        extra={"n_repeats": 12, "locked_test_rows": int(len(test))},
+    )
+    t2 = time.perf_counter()
     pi = permutation_importance(
         pipe,
         test[MODEL_FEATURES],
@@ -2765,6 +3704,21 @@ def finalize_salary_model(
         n_repeats=12,
         random_state=seed,
         n_jobs=1,
+    )
+    pi_s = time.perf_counter() - t2
+    emit_event(
+        "operation_completed",
+        step_id="final.permutation_importance",
+        operation="compute_locked_test_permutation_importance",
+        status="completed",
+        message="Locked-test permutation importance diagnostics completed; values describe model reliance, not causality.",
+        detail_level=2,
+        extra={
+            "elapsed_s": pi_s,
+            "n_repeats": 12,
+            "partition": "locked_test",
+            "interpretation": "model reliance, not causal effect",
+        },
     )
     raw_imp = (
         pd.DataFrame(
@@ -2778,6 +3732,14 @@ def finalize_salary_model(
         .reset_index(drop=True)
     )
     enc_imp = extract_encoded_importance(pipe)
+    emit_event(
+        "operation_completed",
+        step_id="final.encoded_importance",
+        operation="extract_encoded_importance",
+        status="completed",
+        message="Final encoded feature importance extracted.",
+        extra={"features": int(len(enc_imp))},
+    )
     return (
         pipe,
         met,
@@ -2899,7 +3861,7 @@ def dynamic_insights(outputs_root: Path) -> dict[str, str]:
     return result
 
 
-def run_pipeline(
+def _run_pipeline_impl(
     raw_path: Path, root: Path | None = None, workspace_root: Path | None = None
 ) -> dict[str, Any]:
     """Run the complete offline workflow.
@@ -2915,6 +3877,9 @@ def run_pipeline(
     cfg = load_config(project / "config" / "project.yaml")
     seed = int(cfg["project"].get("random_seed", 42))
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    audit_session = active_audit()
+    if audit_session is not None:
+        audit_session.set_pipeline_run_id(run_id)
     out = ensure_dir(workspace / "outputs")
     art = ensure_dir(workspace / "artifacts")
     stages = {
@@ -2929,11 +3894,57 @@ def run_pipeline(
     }
 
     # ── COMMON FOUNDATION: Stage 1–3 ──────────────────────────────────────────
+    _audit_start_stage("C1", "Common 1 — Project Scope & Raw Data Ingestion")
     raw = read_raw(raw_path)
     save_csv(profile_dataframe(raw), stages["s1"] / "raw_profile.csv")
-    clean, audit = basic_clean(raw)
+    emit_event(
+        "data_summary",
+        step_id="stage.C1.summary",
+        operation="read_raw_data",
+        status="completed",
+        message=f"Read {len(raw):,} rows and {raw.shape[1]} canonical source columns.",
+        detail_level=2,
+        extra={
+            "stage_id": "C1",
+            "source_path": str(raw_path),
+            "input_rows": int(len(raw)),
+            "column_count": int(raw.shape[1]),
+        },
+    )
+    _audit_complete_stage("C1", "Common 1 — Project Scope & Raw Data Ingestion")
+
+    _audit_start_stage("C2", "Common 2 — Basic Clean")
+    clean, clean_audit = basic_clean(raw)
     save_csv(clean, stages["s1"] / "basic_clean.csv")
-    save_json(audit, stages["s1"] / "basic_clean_audit.json")
+    save_json(clean_audit, stages["s1"] / "basic_clean_audit.json")
+    emit_event(
+        "data_summary",
+        step_id="stage.C2.summary",
+        operation="basic_clean",
+        status="completed",
+        message=(
+            f"Basic clean: {clean_audit['raw_rows']:,} - "
+            f"{clean_audit['invalid_category_rows_removed']:,} invalid-category - "
+            f"{clean_audit['duplicate_rows_removed']:,} duplicate = {clean_audit['clean_rows']:,} rows."
+        ),
+        detail_level=2,
+        extra={
+            "stage_id": "C2",
+            **{
+                k: clean_audit[k]
+                for k in [
+                    "raw_rows",
+                    "invalid_category_rows_removed",
+                    "duplicate_rows_removed",
+                    "clean_rows",
+                    "clean_columns",
+                ]
+            },
+        },
+    )
+    _audit_complete_stage("C2", "Common 2 — Basic Clean")
+
+    _audit_start_stage("C3", "Common 3 — Data Quality & Contradiction Check")
     findings, details = contradiction_outputs(clean)
     save_csv(findings, stages["s1"] / "contradiction_summary.csv")
     for n, d in details.items():
@@ -2951,12 +3962,65 @@ def run_pipeline(
         "q3": float(clean[TARGET].quantile(0.75)),
     }
     save_json(target_summary, stages["s1"] / "target_summary.json")
+    emit_event(
+        "data_summary",
+        step_id="stage.C3.summary",
+        operation="quality_checks",
+        status="completed",
+        message=f"Quality and contradiction evidence completed for {len(clean):,} cleaned rows.",
+        detail_level=2,
+        extra={
+            "stage_id": "C3",
+            "rows": int(len(clean)),
+            "target": TARGET,
+            "target_summary_scope": "cleaned dataset descriptive evidence",
+        },
+    )
+    _audit_complete_stage("C3", "Common 3 — Data Quality & Contradiction Check")
 
     # ── COMMON FOUNDATION: Stage 4–5 + Branch B1–B3 readiness ───────────────
-    save_csv(feature_policy_table(), stages["s2"] / "feature_policy.csv")
+    _audit_start_stage("C4", "Common 4 — Feature Governance")
+    policy = feature_policy_table()
+    save_csv(policy, stages["s2"] / "feature_policy.csv")
+    emit_event(
+        "data_summary",
+        step_id="stage.C4.summary",
+        operation="feature_governance",
+        status="completed",
+        message=f"Feature policy allows {len(MODEL_FEATURES)} model inputs and blocks target-adjacent, identifier, derived, or time-governance fields.",
+        detail_level=2,
+        extra={
+            "stage_id": "C4",
+            "target": TARGET,
+            "model_features": MODEL_FEATURES,
+            "allowed_feature_count": int((policy.policy == "ALLOW").sum()),
+            "blocked_feature_count": int((policy.policy == "BLOCK").sum()),
+        },
+    )
+    _audit_complete_stage("C4", "Common 4 — Feature Governance")
+
+    _audit_start_stage("C5", "Common 5 — Shared Prepared Feature Base")
     prepared = clean.copy()
     prepared["skill_count"] = derive_skill_count(prepared["required_skills"])
     save_csv(prepared, stages["s2"] / "shared_prepared_feature_base.csv")
+    emit_event(
+        "data_summary",
+        step_id="stage.C5.summary",
+        operation="prepare_feature_base",
+        status="completed",
+        message=f"Prepared {len(prepared):,} rows; skill_count is the count of unique normalized skill tokens.",
+        detail_level=2,
+        extra={
+            "stage_id": "C5",
+            "input_rows": int(len(clean)),
+            "output_rows": int(len(prepared)),
+            "engineered_feature": "skill_count",
+            "derivation": "count(unique normalized required_skills tokens)",
+        },
+    )
+    _audit_complete_stage("C5", "Common 5 — Shared Prepared Feature Base")
+
+    _audit_start_stage("B1-B3", "Branch B — Temporal Split & TRAIN-only Preprocessing")
     dev, test, split_summary = temporal_split(
         prepared,
         int(cfg["project"].get("locked_test_year", 2026)),
@@ -2971,10 +4035,62 @@ def run_pipeline(
     corr = encoded_correlations_train(dev)
     save_csv(corr, stages["s2"] / "train_encoded_correlations.csv")
 
+    emit_event(
+        "operation_started",
+        step_id="readiness.preprocessor.fit",
+        operation="fit_salary_preprocessor",
+        status="started",
+        message="Fit salary preprocessing on DEV only.",
+        detail_level=3,
+        extra={
+            "train_rows": int(len(dev)),
+            "features": MODEL_FEATURES,
+            "fit_scope": "development only",
+        },
+    )
     prep = make_salary_preprocessor(MODEL_FEATURES).fit(dev[MODEL_FEATURES])
+    names = prep.get_feature_names_out()
+    emit_event(
+        "operation_completed",
+        step_id="readiness.preprocessor.fit",
+        operation="fit_salary_preprocessor",
+        status="completed",
+        message="Salary preprocessing fitted on DEV only.",
+        detail_level=3,
+        extra={
+            "train_rows": int(len(dev)),
+            "encoded_feature_count": int(len(names)),
+            "fit_scope": "development only",
+        },
+    )
+    emit_event(
+        "operation_started",
+        step_id="readiness.preprocessor.transform",
+        operation="transform_salary_partitions",
+        status="started",
+        message="Transform DEV and locked test with the DEV-fitted preprocessor.",
+        detail_level=3,
+        extra={
+            "development_rows": int(len(dev)),
+            "locked_test_rows": int(len(test)),
+            "locked_test_scope": "transform only",
+        },
+    )
     ztr = prep.transform(dev[MODEL_FEATURES])
     zte = prep.transform(test[MODEL_FEATURES])
-    names = prep.get_feature_names_out()
+    emit_event(
+        "operation_completed",
+        step_id="readiness.preprocessor.transform",
+        operation="transform_salary_partitions",
+        status="completed",
+        message="DEV and locked-test transforms completed.",
+        detail_level=3,
+        extra={
+            "development_shape": list(ztr.shape),
+            "locked_test_shape": list(zte.shape),
+            "locked_test_scope": "transform only",
+        },
+    )
     train_encoded = pd.DataFrame(ztr, columns=names)
     test_encoded = pd.DataFrame(zte, columns=names)
     save_csv(train_encoded, stages["s2"] / "train_preprocessed.csv")
@@ -3062,8 +4178,30 @@ def run_pipeline(
         },
         stages["s2"] / "08_training_readiness.json",
     )
+    emit_event(
+        "preprocessing_summary",
+        step_id="stage.B1-B3.summary",
+        operation="prepare_training_data",
+        status="completed",
+        message=(
+            f"Prepared DEV={len(dev):,} and locked test={len(test):,}; fitted preprocessing on DEV only "
+            f"and produced {len(names):,} encoded features."
+        ),
+        detail_level=2,
+        extra={
+            "stage_id": "B1-B3",
+            "development_rows": int(len(dev)),
+            "locked_test_rows": int(len(test)),
+            "split_policy": split_summary,
+            "raw_model_features": MODEL_FEATURES,
+            "encoded_feature_count": int(len(names)),
+            "preprocessor_fit_scope": "development only",
+        },
+    )
+    _audit_complete_stage("B1-B3", "Branch B — Temporal Split & TRAIN-only Preprocessing")
 
     # ── BRANCH A: AI JOB MARKET SEGMENTATION ────────────────────────────────
+    _audit_start_stage("A1-A8", "Branch A — AI Job Market Segmentation")
     seg_cfg = cfg.get("segmentation", {})
     res_cfg = seg_cfg.get("resample_stability", {}) or {}
     pca_max = seg_cfg.get("pca_max_components", None)
@@ -3095,6 +4233,19 @@ def run_pipeline(
     )
     for n, d in seg_tables.items():
         save_csv(d, stages["seg"] / f"{n}.csv")
+    for evidence_name in (
+        "feature_space_option_summary",
+        "representation_summary",
+        "cluster_evaluation",
+        "resample_stability_runs",
+    ):
+        if evidence_name in seg_tables:
+            export_evidence_table(
+                f"segmentation-{evidence_name}",
+                seg_tables[evidence_name],
+                kind="segmentation_summary",
+                detail_level=4,
+            )
     save_json(seg_meta, stages["seg"] / "segmentation_metadata.json")
     save_json(seg_meta["rationale"], stages["seg"] / "k_selection_rationale.json")
     save_json(
@@ -3104,9 +4255,33 @@ def run_pipeline(
         seg_meta.get("feature_space_decision", {}), stages["seg"] / "feature_space_decision.json"
     )
     save_json(seg_meta["insights"], stages["seg"] / "segmentation_insights.json")
-    joblib.dump(seg_bundle, art / "cluster_bundle.joblib")
+    _audited_joblib_dump(
+        seg_bundle, art / "cluster_bundle.joblib", role="segmentation inference bundle"
+    )
+    emit_event(
+        "data_summary",
+        step_id="stage.A1-A8.summary",
+        operation="segmentation",
+        status="completed",
+        message=(
+            f"Selected {seg_meta.get('representation_id')} with {seg_meta.get('algorithm')} "
+            f"K={seg_meta.get('k')} from DEV-fitted segmentation evidence."
+        ),
+        detail_level=2,
+        extra={
+            "stage_id": "A1-A8",
+            "fit_rows": seg_meta.get("fit_rows"),
+            "target_used_for_clustering": seg_meta.get("target_used_for_clustering"),
+            "representation_id": seg_meta.get("representation_id"),
+            "algorithm": seg_meta.get("algorithm"),
+            "k": seg_meta.get("k"),
+            "silhouette": seg_meta.get("silhouette"),
+        },
+    )
+    _audit_complete_stage("A1-A8", "Branch A — AI Job Market Segmentation")
 
     # ── BRANCH B4: MODEL TRAINING & TEMPORAL COMPARISON ────────────────────
+    _audit_start_stage("B4", "Branch B — Model Training & Temporal-CV Comparison")
     cv_rows = []
     summaries = []
     for name, model in candidate_models(seed).items():
@@ -3161,7 +4336,28 @@ def run_pipeline(
     )
 
     best_family = str(model_comparison.iloc[0].model)
+    comparison_evidence = model_comparison.copy()
+    comparison_evidence["partition"] = "development_temporal_validation"
+    comparison_evidence["train_metrics_status"] = "not_computed"
+    comparison_evidence["locked_test_metrics_status"] = "not_evaluated"
+    comparison_evidence["fit_assessment"] = "insufficient_evidence"
+    comparison_evidence["fit_reason"] = "training_scores_not_computed; diagnostic_rule_not_defined"
+    export_evidence_table(
+        "model-comparison", comparison_evidence, kind="model_comparison", detail_level=2
+    )
+    _audit_complete_stage(
+        "B4",
+        "Branch B — Model Training & Temporal-CV Comparison",
+        extra={
+            "best_family": best_family,
+            "selection_metric": "MAE_mean",
+            "selection_direction": "ascending",
+            "candidate_count": int(len(model_comparison)),
+        },
+    )
 
+    _audit_start_stage("B5-B6", "Branch B — Best Model, Explainability & Locked Test")
+    later_tuning_recommendations: list[dict[str, Any]] = []
     if best_family == "Random Forest":
         s1, s2, s3, s4, s5, s_sum = tune_random_forest_manual_steps(
             dev, int(cfg["project"].get("temporal_cv_folds", 5)), seed
@@ -3175,9 +4371,39 @@ def run_pipeline(
         save_csv(s4, stages["bm"] / "manual_tuning_step4_min_samples_leaf.csv")
         save_csv(s5, stages["bm"] / "manual_tuning_step5_max_features.csv")
         save_csv(s_sum, stages["bm"] / "manual_tuning_4params_summary.csv")
+        later_tuning_recommendations = s_sum.to_dict("records")
     else:
         tuning = pd.DataFrame()
+        emit_event(
+            "tuning_skipped",
+            step_id="tuning.rf",
+            operation="manual_rf_tuning",
+            status="skipped",
+            message="Random Forest tuning skipped because another model family won.",
+            detail_level=2,
+            extra={"best_family": best_family, "reason": "random_forest_not_selected"},
+        )
     final_est = final_model_from_selection(best_family, tuning, seed)
+    emit_event(
+        "selection_recorded",
+        step_id="selection.applied_parameters",
+        operation="record_applied_model_selection",
+        status="completed",
+        message="Recorded the actual final estimator source and applied parameters without changing selection behavior.",
+        detail_level=2,
+        extra={
+            "best_family": best_family,
+            "family_selection_metric": "MAE_mean",
+            "family_selection_direction": "ascending",
+            "tuning_ranking_metric": "CV_R2" if best_family == "Random Forest" else None,
+            "tuning_ranking_direction": "descending" if best_family == "Random Forest" else None,
+            "final_selection_source": "initial tuning table first row"
+            if best_family == "Random Forest"
+            else "candidate family default",
+            "applied_parameters": final_est.get_params(deep=False),
+            "later_stage_recommendations": later_tuning_recommendations,
+        },
+    )
     final_pipe, metrics, diag = finalize_salary_model(dev, test, final_est, seed)
     for n, d in diag.items():
         save_csv(d, stages["bm"] / f"{n}.csv")
@@ -3196,9 +4422,20 @@ def run_pipeline(
     save_csv(diag["encoded_importance"], stages["bm"] / "10_encoded_feature_importance.csv")
     save_csv(pd.DataFrame([metrics]), stages["bm"] / "10_final_locked_test_metrics.csv")
     save_json(metrics, stages["bm"] / "locked_test_metrics.json")
+    _audit_complete_stage(
+        "B5-B6",
+        "Branch B — Best Model, Explainability & Locked Test",
+        extra={
+            "best_family": best_family,
+            "locked_test_rows": int(len(test)),
+            "locked_test_metrics": metrics,
+            "candidate_locked_test_scope": "selected model only",
+        },
+    )
 
     # ── BRANCH B7: DEPLOYABLE BUNDLE + METADATA ─────────────────────────────
-    joblib.dump(final_pipe, art / "model_bundle.joblib")
+    _audit_start_stage("B7", "Branch B — Deployment Bundle & Prediction Output")
+    _audited_joblib_dump(final_pipe, art / "model_bundle.joblib", role="salary model bundle")
     selected_params = final_est.get_params(deep=False)
     selected_params = {
         k: v
@@ -3220,13 +4457,26 @@ def run_pipeline(
     metadata["workspace_root"] = str(workspace)
     save_json(metadata, art / "metadata.json")
     save_json({"model_features": MODEL_FEATURES, "target": TARGET}, art / "feature_contract.json")
-    joblib.dump(prep, art / "salary_preprocessor_train_only.joblib")
+    _audited_joblib_dump(
+        prep, art / "salary_preprocessor_train_only.joblib", role="DEV-fitted salary preprocessor"
+    )
     # Compatibility aliases used by FPTCranes-PRJ2-main.
-    joblib.dump(prep, art / "preprocessor_ml_ready.joblib")
-    joblib.dump(final_pipe, art / "model.pkl")
-    joblib.dump(prep, art / "preprocessor.pkl")
+    _audited_joblib_dump(
+        prep, art / "preprocessor_ml_ready.joblib", role="compatibility DEV-fitted preprocessor"
+    )
+    _audited_joblib_dump(final_pipe, art / "model.pkl", role="compatibility salary model bundle")
+    _audited_joblib_dump(prep, art / "preprocessor.pkl", role="compatibility salary preprocessor")
 
-    reloaded = joblib.load(art / "model_bundle.joblib")
+    reloaded = _audited_joblib_load(art / "model_bundle.joblib", role="salary model bundle")
+    emit_event(
+        "operation_started",
+        step_id="serialization.equivalence.predict",
+        operation="predict_serialization_equivalence",
+        status="started",
+        message="Compare predictions from in-memory and reloaded bundles on the existing 20-row sample.",
+        detail_level=3,
+        extra={"sample_rows": int(min(20, len(test))), "prediction_calls": 2},
+    )
     p1 = np.asarray(final_pipe.predict(test[MODEL_FEATURES].head(20)))
     p2 = np.asarray(reloaded.predict(test[MODEL_FEATURES].head(20)))
     equivalence = {
@@ -3235,6 +4485,15 @@ def run_pipeline(
         "tolerance": 1e-9,
         "passed": bool(np.max(np.abs(p1 - p2)) <= 1e-9),
     }
+    emit_event(
+        "operation_completed",
+        step_id="serialization.equivalence.predict",
+        operation="predict_serialization_equivalence",
+        status="completed",
+        message="Serialization prediction equivalence check completed.",
+        detail_level=3,
+        extra=equivalence,
+    )
     save_json(equivalence, stages["pred"] / "serialization_check.json")
     save_json(equivalence, art / "11_bundle_equivalence.json")
     save_json(metadata, stages["pred"] / "model_metadata.json")
@@ -3295,8 +4554,19 @@ def run_pipeline(
         ),
         stages["pred"] / "12_prediction_summary.csv",
     )
+    _audit_complete_stage(
+        "B7",
+        "Branch B — Deployment Bundle & Prediction Output",
+        extra={
+            "model": best_family,
+            "reload_max_abs_diff": equivalence["reload_max_abs_diff"],
+            "reload_tolerance": equivalence["tolerance"],
+            "reload_passed": equivalence["passed"],
+        },
+    )
 
     # ── INTEGRATED INSIGHT ───────────────────────────────────────────────────
+    _audit_start_stage("I1", "Integrated Insight — Segments + Salary Prediction")
     assignments = seg_tables["cluster_assignments"][["cluster", "PC1", "PC2"]].copy()
     integrated = prepared.reset_index(drop=True).copy()
     integrated[["cluster", "PC1", "PC2"]] = assignments
@@ -3319,7 +4589,29 @@ def run_pipeline(
     )
     save_csv(city, stages["int"] / "segment_city_country_summary.csv")
     locked_pred = diag["locked_test_predictions"].copy()
+    emit_event(
+        "operation_started",
+        step_id="integrated.segment.predict",
+        operation="predict_segments",
+        status="started",
+        message="Assign existing locked-test rows to the fitted segmentation space.",
+        detail_level=3,
+        extra={"rows": int(len(test)), "refit": False},
+    )
     test_assign = predict_segments(seg_bundle, test)
+    emit_event(
+        "operation_completed",
+        step_id="integrated.segment.predict",
+        operation="predict_segments",
+        status="completed",
+        message="Locked-test segment assignment completed without refitting.",
+        detail_level=3,
+        extra={
+            "rows": int(len(test)),
+            "refit": False,
+            "assigned_clusters": int(pd.Series(test_assign).nunique()),
+        },
+    )
     locked_pred["cluster"] = test_assign.astype(int)
     pred_by_seg = (
         locked_pred.groupby("cluster")
@@ -3332,8 +4624,18 @@ def run_pipeline(
         .reset_index()
     )
     save_csv(pred_by_seg, stages["int"] / "predicted_salary_by_segment.csv")
+    _audit_complete_stage(
+        "I1",
+        "Integrated Insight — Segments + Salary Prediction",
+        extra={
+            "prepared_rows": int(len(prepared)),
+            "locked_test_rows": int(len(test)),
+            "segment_groups": int(len(pred_by_seg)),
+        },
+    )
 
     # ── FULL PIPELINE STATUS ─────────────────────────────────────────────────
+    _audit_start_stage("F", "Full Pipeline — Status & Reproducibility Summary")
     status = pd.DataFrame(
         [
             {
@@ -3424,4 +4726,38 @@ def run_pipeline(
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
     save_json(summary, stages["full"] / "run_summary.json")
+    _audit_complete_stage(
+        "F",
+        "Full Pipeline — Status & Reproducibility Summary",
+        extra={
+            "run_id": run_id,
+            "source_sha256": summary["source_sha256"],
+            "best_model": best_family,
+        },
+    )
     return summary
+
+
+def run_pipeline(
+    raw_path: Path,
+    root: Path | None = None,
+    workspace_root: Path | None = None,
+    *,
+    debuglog: bool = False,
+    on_audit_event=None,
+) -> dict[str, Any]:
+    """Run the complete offline workflow with an additive training audit log."""
+    project = root or project_root()
+    workspace = Path(workspace_root) if workspace_root is not None else project
+    cfg = load_config(project / "config" / "project.yaml")
+    seed = int(cfg["project"].get("random_seed", 42))
+    with start_training_audit(
+        workspace_root=workspace,
+        raw_path=raw_path,
+        seed=seed,
+        target=TARGET,
+        features=MODEL_FEATURES,
+        debuglog=debuglog,
+        on_event=on_audit_event,
+    ):
+        return _run_pipeline_impl(raw_path=raw_path, root=root, workspace_root=workspace_root)

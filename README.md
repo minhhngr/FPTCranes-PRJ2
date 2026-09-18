@@ -5,6 +5,8 @@ This release combines the technical workflow in `Document_QD Project KHDL&AI(8)`
 
 The central architecture is **outputs first**: the offline pipeline creates data/model/evidence artifacts; Streamlit reads the active run artifacts and does not refit models when charts or filters change.
 
+Training audit logs and interpretation notes are documented in `docs/TRAINING_AUDIT.md`.
+
 ## End-to-end workflow
 
 ### Common Foundation
@@ -168,6 +170,8 @@ source .venv/bin/activate
 
 python -m pip install -r requirements.txt
 python pipeline.py
+# Add fold/trial/split/feature detail while keeping structured JSON file-only:
+python pipeline.py --debuglog
 python validate_release.py
 python -m pytest -q
 streamlit run streamlit.py
