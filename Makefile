@@ -1,6 +1,6 @@
-.PHONY: run_app install ruff_check clean clean_all
+.PHONY: app install ruff_check clean clean_all
 
-run_app:
+app:
 	uv run streamlit run streamlit.py
 
 ruff_check:

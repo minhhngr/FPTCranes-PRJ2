@@ -111,7 +111,16 @@ def test_interactive_evidence_outputs_exist():
 def test_streamlit_pages_are_output_driven_and_interactive():
     pages = list((ROOT / "src/pages").glob("page*.py"))
     text = "\n".join(p.read_text(encoding="utf-8") for p in pages)
+    evidence_reader = (ROOT / "src/pages/model_evidence.py").read_text(encoding="utf-8")
+    training_presentation = (ROOT / "src/pages/model_training_presentation.py").read_text(
+        encoding="utf-8"
+    )
     assert ".fit(" not in text
+    assert ".fit(" not in evidence_reader
+    assert ".fit(" not in training_presentation
+    assert "run_pipeline(" not in training_presentation
+    assert "ui_evidence_training" not in training_presentation
+    assert '"outputs/08_full_pipeline/logs"' in training_presentation
     assert "st.plotly_chart" in (ROOT / "src/pages/common.py").read_text(encoding="utf-8")
     assert text.count("selectbox(") >= 12
     assert text.count("multiselect(") >= 10
@@ -198,9 +207,19 @@ def test_streamlit_has_global_upload_full_process_and_commentary_every_page():
     assert "Process full pipeline on this dataset" in data_source
     assert "run_pipeline(" in data_source
     assert 'disabled=not report["valid"]' in data_source
+    evidence_pages = {
+        "page04_model_comparison.py",
+        "page05_best_model.py",
+        "page06_prediction.py",
+    }
     for p in sorted((ROOT / "src/pages").glob("page*.py")):
         txt = p.read_text(encoding="utf-8")
-        assert "interpretation_card(" in txt, p.name
+        if p.name in evidence_pages:
+            assert "load_evidence(" in txt, p.name
+            assert "run_pipeline(" not in txt, p.name
+            assert ".fit(" not in txt, p.name
+        else:
+            assert "interpretation_card(" in txt, p.name
 
 
 def test_legacy_main_archive_manifest_packaged():

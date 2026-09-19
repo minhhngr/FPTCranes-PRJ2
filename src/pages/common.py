@@ -70,9 +70,17 @@ def metric_cols(st, items):
 
 
 def show_plot(st, fig, key=None):
-    fig.update_layout(margin=dict(l=20, r=20, t=55, b=25), hovermode="closest")
+    """Render a Plotly figure without erasing builder-specific readability geometry."""
+    layout = fig.layout.to_plotly_json()
+    updates = {}
+    if not layout.get("margin"):
+        updates["margin"] = dict(l=40, r=30, t=65, b=50)
+    if not layout.get("hovermode"):
+        updates["hovermode"] = "closest"
+    if updates:
+        fig.update_layout(**updates)
     st.plotly_chart(
-        fig, use_container_width=True, key=key, config={"displaylogo": False, "responsive": True}
+        fig, width="stretch", key=key, config={"displaylogo": False, "responsive": True}
     )
 
 
@@ -100,7 +108,7 @@ def downloadable_table(
     st, df: pd.DataFrame, title: str, key: str, file_name: str | None = None, height=350
 ):
     st.markdown(f"#### {title}")
-    st.dataframe(df, use_container_width=True, hide_index=True, height=height)
+    st.dataframe(df, width="stretch", hide_index=True, height=height)
     st.download_button(
         "Download CSV",
         df.to_csv(index=False).encode("utf-8"),

@@ -1534,9 +1534,7 @@ def render(st, root, role="admin"):
             st.code(str(r0_inputs), language=None)
         else:
             contract = pd.DataFrame(FAMILY_CONTRACT)
-            st.dataframe(
-                contract[["family", "raw_fields"]], use_container_width=True, hide_index=True
-            )
+            st.dataframe(contract[["family", "raw_fields"]], width="stretch", hide_index=True)
 
         st.markdown("#### Official feature contract after representation selection")
         st.code(str(selected_inputs), language=None)
@@ -1558,7 +1556,7 @@ def render(st, root, role="admin"):
         dims = e["family_dimensions"].copy()
         if not dims.empty and "family" in dims.columns:
             contract = contract.merge(dims, on="family", how="left")
-        st.dataframe(contract, use_container_width=True, hide_index=True)
+        st.dataframe(contract, width="stretch", hide_index=True)
 
         if not dims.empty and "encoded_dimensions" in dims.columns:
             fig = px.bar(
@@ -2295,7 +2293,7 @@ def render(st, root, role="admin"):
                 gate_rows,
                 columns=["Gate / rule", "Metric", "Threshold", "Direction"],
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -2348,7 +2346,7 @@ def render(st, root, role="admin"):
             st.markdown("#### Selected feature-space option vs runner-up")
             st.dataframe(
                 comp,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -2519,7 +2517,7 @@ def render(st, root, role="admin"):
                 if clusters
                 else prof.copy()
             )
-            st.dataframe(view, use_container_width=True, hide_index=True)
+            st.dataframe(view, width="stretch", hide_index=True)
             profile_cols = [
                 c
                 for c in ["years_mean", "demand_mean", "benefits_mean", "skill_count_mean"]

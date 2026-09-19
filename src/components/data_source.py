@@ -101,16 +101,14 @@ def render_data_source_control(st, project_root: Path, role: str) -> Path:
         else:
             st.error("Schema gate failed. Fix all ERROR items before processing.")
         if not issues.empty:
-            st.dataframe(issues, use_container_width=True, hide_index=True)
+            st.dataframe(issues, width="stretch", hide_index=True)
         with st.expander("Expected vs detected columns", expanded=not report["valid"]):
-            st.dataframe(
-                report["field_table"], use_container_width=True, hide_index=True, height=430
-            )
+            st.dataframe(report["field_table"], width="stretch", hide_index=True, height=430)
 
         process = st.button(
             "Process full pipeline on this dataset",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not report["valid"],
             key="process_uploaded_dataset",
         )
