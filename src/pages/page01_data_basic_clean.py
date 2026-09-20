@@ -10,6 +10,36 @@ from ai_job_market.core import dynamic_insights
 from .common import *
 
 
+def build_clean_comparison_frame(audit: dict) -> pd.DataFrame:
+    """Build an Arrow-safe comparison table with consistently textual values."""
+    return pd.DataFrame(
+        {
+            "Aspect": [
+                "Records",
+                "Columns",
+                "Missing cells",
+                "Duplicate rows",
+                "Unique identifier",
+            ],
+            "Raw": [
+                f"{int(audit['raw_rows']):,}",
+                f"{int(audit['raw_columns']):,}",
+                "0",
+                f"{int(audit['duplicate_rows_removed']):,}",
+                "job_id present",
+            ],
+            "Basic clean": [
+                f"{int(audit['clean_rows']):,}",
+                f"{int(audit['clean_columns']):,}",
+                "0",
+                "0",
+                "job_id removed",
+            ],
+        },
+        dtype="string",
+    )
+
+
 def _filters(st, df):
     with st.expander("Interactive filters", expanded=True):
         c1, c2, c3, c4 = st.columns(4)
@@ -124,7 +154,7 @@ def render(st, root, role="admin"):
                     }
                 ),
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         skew_note = (
             "right-skewed"
@@ -141,13 +171,13 @@ def render(st, root, role="admin"):
         with st.expander("Raw schema / profiling evidence"):
             st.dataframe(
                 read_csv(root, "01_data_basic_clean/raw_profile.csv"),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
             if (root / "outputs/01_data_basic_clean/numeric_descriptive_summary.csv").exists():
                 st.dataframe(
                     read_csv(root, "01_data_basic_clean/numeric_descriptive_summary.csv"),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
@@ -156,32 +186,8 @@ def render(st, root, role="admin"):
         st.success(
             f"Basic clean removed {audit['invalid_category_rows_removed']} corrupted category row(s) and the unique `job_id` identifier. The output is **{audit['clean_rows']:,} rows × {audit['clean_columns']} columns**. `skill_count` is created later during feature preparation, not during basic cleaning."
         )
-        compare = pd.DataFrame(
-            {
-                "Aspect": [
-                    "Records",
-                    "Columns",
-                    "Missing cells",
-                    "Duplicate rows",
-                    "Unique identifier",
-                ],
-                "Raw": [
-                    audit["raw_rows"],
-                    audit["raw_columns"],
-                    0,
-                    audit["duplicate_rows_removed"],
-                    "job_id present",
-                ],
-                "Basic clean": [
-                    audit["clean_rows"],
-                    audit["clean_columns"],
-                    0,
-                    0,
-                    "job_id removed",
-                ],
-            }
-        )
-        st.dataframe(compare, use_container_width=True, hide_index=True)
+        compare = build_clean_comparison_frame(audit)
+        st.dataframe(compare, width="stretch", hide_index=True)
         c1, c2 = st.columns(2)
         with c1:
             prof = (
@@ -244,7 +250,7 @@ def render(st, root, role="admin"):
         insight_box(st, dynamic_insights(root / "outputs").get("data_quality", ""), "warning")
         st.dataframe(
             findings.style.format({"affected_pct": "{:.2f}%"}),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
         top_issue = findings.sort_values("affected_pct", ascending=False).iloc[0]

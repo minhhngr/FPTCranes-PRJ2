@@ -9,7 +9,7 @@ def require_login(st):
     if st.session_state.auth_role:
         with st.sidebar:
             st.success(f"Signed in as {st.session_state.auth_role}")
-            if st.button("Log out", use_container_width=True):
+            if st.button("Log out", width="stretch"):
                 st.session_state.auth_role = None
                 st.rerun()
         return st.session_state.auth_role
@@ -20,7 +20,7 @@ def require_login(st):
     with st.form("login"):
         user = st.text_input("Username")
         pwd = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Sign in", use_container_width=True)
+        submit = st.form_submit_button("Sign in", width="stretch")
     admin_user = os.getenv("AIJOB_ADMIN_USER", "admin")
     admin_pwd = os.getenv("AIJOB_ADMIN_PASSWORD", "AIJob2026!")
     if submit:

@@ -80,7 +80,7 @@ def render(st, root, role="admin"):
             )
             show_plot(st, fig, "p2_policy_pie")
         with c2:
-            st.dataframe(policy, use_container_width=True, hide_index=True, height=360)
+            st.dataframe(policy, width="stretch", hide_index=True, height=360)
         insight_box(st, dynamic_insights(root / "outputs").get("correlation", ""))
         topn = st.slider("Top encoded correlations", 10, 60, 30, key="p2_corr_topn")
         direction = st.radio(
@@ -156,7 +156,7 @@ def render(st, root, role="admin"):
                     "R2_mean": "{:.3f}",
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
         base = (
@@ -282,7 +282,7 @@ def render(st, root, role="admin"):
             show = (
                 fmap if original == "All" else fmap[fmap.original_feature.astype(str) == original]
             )
-            st.dataframe(show, use_container_width=True, hide_index=True, height=360)
+            st.dataframe(show, width="stretch", hide_index=True, height=360)
 
     with tabs[3]:
         st.markdown("### Skills — Multi-hot Encoding Evidence")
@@ -329,7 +329,7 @@ def render(st, root, role="admin"):
                 f"Skills with fewer than 50 records: {len(low):,} of {len(skills):,} tokens in the current TRAIN vocabulary."
             )
             with st.expander("Skills with <50 records"):
-                st.dataframe(low, use_container_width=True, hide_index=True, height=360)
+                st.dataframe(low, width="stretch", hide_index=True, height=360)
             top_skill = skills.sort_values("records", ascending=False).iloc[0]
             rare_share = 100 * len(low) / len(skills) if len(skills) else 0
             corr_note = ""

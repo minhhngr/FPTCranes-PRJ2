@@ -53,7 +53,7 @@ def render(st, root, role="admin"):
             st.image(
                 str(img),
                 caption="Integrated AI Job Market Segmentation + Salary Prediction Pipeline",
-                use_container_width=True,
+                width="stretch",
             )
         st.markdown("""
         **Presentation order used in this release**
@@ -77,9 +77,7 @@ def render(st, root, role="admin"):
     with tabs[1]:
         img = root / "docs/pipelines/Pipeline_AI-salary-segmentation.png"
         if img.exists():
-            st.image(
-                str(img), caption="Branch A — AI Job Market Segmentation", use_container_width=True
-            )
+            st.image(str(img), caption="Branch A — AI Job Market Segmentation", width="stretch")
         r = read_json(root, "03_ai_job_market_segmentation/k_selection_rationale.json")
         interpretation_card(
             st,
@@ -92,7 +90,7 @@ def render(st, root, role="admin"):
     with tabs[2]:
         img = root / "docs/pipelines/Pipeline_AI-salary-prediction.png"
         if img.exists():
-            st.image(str(img), caption="Branch B — Salary Prediction", use_container_width=True)
+            st.image(str(img), caption="Branch B — Salary Prediction", width="stretch")
         comp = read_csv(root, "04_model_comparison/model_comparison.csv").sort_values("MAE_mean")
         met = read_json(root, "05_best_model/locked_test_metrics.json")
         best = comp.iloc[0]
@@ -117,7 +115,7 @@ def render(st, root, role="admin"):
         fig.update_yaxes(visible=False)
         fig.update_traces(textposition="inside")
         show_plot(st, fig, "p8_status")
-        st.dataframe(status, use_container_width=True, hide_index=True)
+        st.dataframe(status, width="stretch", hide_index=True)
         selected = st.selectbox(
             "Inspect stage artifact", status.stage.tolist(), key="p8_artifact_stage"
         )
@@ -138,7 +136,7 @@ def render(st, root, role="admin"):
             "Use **Sidebar → Data source → Upload & process a new dataset**. The Process button is enabled only when the blocking schema checks pass."
         )
         schema = pd.DataFrame({"required_column": SOURCE_COLUMNS})
-        st.dataframe(schema, use_container_width=True, hide_index=True, height=430)
+        st.dataframe(schema, width="stretch", hide_index=True, height=430)
         st.markdown("""
         **Blocking checks before Process is enabled**
         - all 25 raw source fields are present (`job_category` is accepted as an alias for raw `AI Engineering`);
