@@ -25,6 +25,7 @@ from .model_training_presentation import (
     TABLE_EMPHASIS_LEGEND,
     load_compatible_training_audit,
     load_evidence_download,
+    temporal_validation_guide,
     tuning_decision_table,
     tuning_method_guide,
 )
@@ -106,6 +107,142 @@ def _tuning_figure(frame: pd.DataFrame, parameter: str, title: str) -> go.Figure
         uniformtext=dict(minsize=10, mode="hide"),
     )
     return figure
+
+
+def _branch_b_fold_table(folds: pd.DataFrame) -> pd.DataFrame:
+    """Build one evidence-backed row per historical Branch B temporal fold."""
+    required = {
+        "fold_id",
+        "train_period",
+        "validation_period",
+        "train_rows",
+        "validation_rows",
+    }
+    if folds.empty or required - set(folds.columns):
+        raise ValueError("candidate fold evidence is incomplete")
+    definitions = (
+        folds[
+            [
+                "fold_id",
+                "train_period",
+                "validation_period",
+                "train_rows",
+                "validation_rows",
+            ]
+        ]
+        .drop_duplicates()
+        .sort_values("fold_id", kind="stable")
+        .reset_index(drop=True)
+    )
+    if definitions["fold_id"].duplicated().any():
+        raise ValueError("candidate models disagree on temporal fold definitions")
+    definitions.insert(0, "Step", range(1, len(definitions) + 1))
+    definitions.insert(2, "Flow", "Train → Validation")
+    return definitions.rename(
+        columns={
+            "fold_id": "Fold",
+            "train_period": "Train period",
+            "validation_period": "Validation period",
+            "train_rows": "Train rows",
+            "validation_rows": "Validation rows",
+        }
+    )
+
+
+def _render_branch_b_fold_log(st, manifest, tables, audit):
+    folds = tables.get("candidate_fold_metrics", pd.DataFrame())
+    membership = tables.get("fold_membership", pd.DataFrame())
+    try:
+        guide = temporal_validation_guide(
+            folds,
+            membership,
+            full_feature_count=len(manifest["full_features"]),
+        )
+        fold_table = _branch_b_fold_table(folds)
+        guide_error = None
+    except (KeyError, TypeError, ValueError) as exc:
+        guide = None
+        fold_table = pd.DataFrame()
+        guide_error = str(exc)
+
+    with st.expander("Branch B · How the temporal DEV folds are split", expanded=False):
+        st.caption(
+            "Historical Branch B evidence. This is the adjacent-block DEV protocol used by the "
+            "saved workflow; it is separate from the strict training-validation/v1 expanding-fold protocol."
+        )
+        if guide is None:
+            st.warning(f"Branch B fold guide unavailable: {guide_error}")
+            return
+
+        with st.container(horizontal=True):
+            st.metric("Temporal folds", guide["fold_count"], border=True)
+            st.metric("Candidate models", guide["candidate_count"], border=True)
+            st.metric("Train/validation overlap", guide["row_overlap_count"], border=True)
+
+        st.markdown("**How the fold split works**")
+        st.markdown(guide["method"])
+        st.dataframe(
+            fold_table,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Step": st.column_config.NumberColumn(format="%d"),
+                "Train rows": st.column_config.NumberColumn(format="%d"),
+                "Validation rows": st.column_config.NumberColumn(format="%d"),
+            },
+        )
+
+        st.markdown("**Step-by-step fold execution**")
+        for row in fold_table.to_dict("records"):
+            st.markdown(
+                f"**Step {row['Step']} · {row['Fold']}:** fit preprocessing + model on "
+                f"`{row['Train period']}` (**{int(row['Train rows']):,} rows**) → validate on "
+                f"`{row['Validation period']}` (**{int(row['Validation rows']):,} rows**)."
+            )
+
+        st.markdown("**Observed Branch B training-log events**")
+        if audit.get("available"):
+            events = pd.DataFrame(audit.get("event_preview", []))
+            if not events.empty and "fold_id" in events:
+                fold_events = events[events["fold_id"].notna()].copy()
+            else:
+                fold_events = pd.DataFrame()
+            if not fold_events.empty:
+                visible = [
+                    column
+                    for column in (
+                        "sequence",
+                        "timestamp",
+                        "operation",
+                        "model",
+                        "fold_id",
+                        "trial_id",
+                        "status",
+                        "evidence_ref",
+                    )
+                    if column in fold_events.columns
+                ]
+                st.dataframe(
+                    fold_events[visible],
+                    hide_index=True,
+                    width="stretch",
+                    height=min(420, 42 + 35 * min(len(fold_events), 10)),
+                )
+                st.caption(
+                    f"Showing {len(fold_events)} fold-labelled event(s) from audit "
+                    f"`{audit['audit_run_id']}`. The complete JSONL remains available in the historical audit downloads."
+                )
+            else:
+                st.info("The compatible historical audit has no fold-labelled events in its bounded preview.")
+        else:
+            st.info("A source-compatible historical training audit is unavailable for raw fold events.")
+
+        st.markdown("**Limits**")
+        st.markdown(guide["limitations"])
+        st.caption(
+            "Calendar labels can meet at block boundaries while record identities remain disjoint. "
+            "The historical test was not used to choose fold membership or tuning settings, but it has been exposed to final scoring."
+        )
 
 
 def render(st, root, role="admin"):
@@ -284,6 +421,7 @@ def render(st, root, role="admin"):
         st.markdown(
             "**Question:** Which parameter values were applied, and what does the inherited sensitivity evidence actually support?"
         )
+        _render_branch_b_fold_log(st, manifest, tables, audit)
         applied_parameters = manifest["models"]["full:selected"]["parameters"]
         try:
             tuning_guide = tuning_method_guide(
