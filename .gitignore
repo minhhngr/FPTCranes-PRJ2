@@ -19,3 +19,4 @@ dist/
 *.tmp
 *.swp
 .idea/
+uv.lock

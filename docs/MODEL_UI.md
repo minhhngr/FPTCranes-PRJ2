@@ -1,6 +1,36 @@
 # Model Comparison, Diagnostics and Controlled Salary Scenarios
 
-Pages 04–06 consume a versioned supplemental evidence pack. They do not fit, tune, regenerate or silently substitute models during normal page interaction.
+Pages 04–06 consume a versioned supplemental evidence pack. Pages 04–05 also expose a separate immutable `training-validation/v1` pack when one exists. They do not fit, tune, regenerate, deserialize, publish or silently substitute models during normal page interaction.
+
+## Offline training-validation evidence on Pages 04–05
+
+A compact always-visible `Training & validation evidence` overview gives third-party reviewers immediate verified-run status and trust boundaries; the detailed tables remain in collapsed expanders. This additive block does not replace or restructure existing Page 04/05 analytics and is isolated for easy removal after verification. Both overview and expanders are independent of `outputs/ui_evidence/current.json`. They scan at most 100 final directories under `outputs/training_validation/tv-<32 lowercase hex>/`, validate every candidate with the producer's complete-pack validator, and select the greatest strict UTC `generated_at` (run ID breaks ties). A corrupt newer candidate does not hide an older valid pack. Staging directories and the holdout-access ledger are never candidates.
+
+Page 04 reports the approved chronological partition, five expanding monthly outer folds, 18 parent-labelled inner folds, all 25 candidate/fold evaluations, fit/stability/runtime context, the lowest-CV-MAE versus selected-family versus fastest-fit distinction, and five scoped candidate conclusions. Page 05 separates nested tuning and matched Full/Top-2 evidence from one-time `EVALUATION_HOLDOUT`, explainability, subgroup, descriptive q90 uncertainty, scientific outcome, operational status and two final-role conclusions. `INFERENCE_RESERVE` never has displayed metrics or predictions, and holdout results cannot silently promote a model.
+
+Three log forms remain visibly distinct:
+
+1. original short `training.log`;
+2. original raw lifecycle `events.jsonl`;
+3. a deterministic **evidence-derived** method transcript reconstructed from authoritative CSV/JSON rows, with source references and no invented timestamps.
+
+Original log/report/summary downloads are byte-identical. The complete `training-validation-transcript.csv` is generated in memory and is not written to the workspace; previews may be bounded. If no valid pack exists, each expander says `Training validation unavailable`, uses no fixture/historical/hardcoded fallback, and offers only the read-only command:
+
+```bash
+.venv/bin/python training_validation.py inspect --workspace . --policy config/training_validation.json
+```
+
+A future approved operator may run and then check training **offline** as documented in `docs/TRAINING_VALIDATION.md`; Streamlit provides no run button. Scientific status is evidence, not activation, deployment approval or serving configuration.
+
+### Historical Branch B report and 5W1H logs
+
+The current workspace also has a complete source-compatible primary-pipeline audit and active supplemental evidence. Pages 04–05 therefore add a separately labelled **Historical Branch B training report** even while strict future-reserve validation remains unavailable. It never fills strict-pack fields or claims that historically scored locked-test rows are unseen.
+
+The evidence flow is shown as common prepared feature base → Branch A analytical workflow → Branch B salary comparison/tuning/evaluation. Both branches share upstream preparation, but Branch A cluster assignments are not silently added as Branch B salary features. Existing outputs and logs are reused; the root pipeline is not rerun merely to populate the UI.
+
+Page 04 provides five source-bound 5W1H records—Dummy Median, Linear Regression, Ridge Regression, Random Forest and Gradient Boosting. Page 05 provides selected-family, Full 13 and fixed Top-2 records. Each record identifies Who, What, When, Where, Why and How, then reports observed metrics, limitation, next action and relative source references. `Why` means evidence-backed comparison role/decision; it does not invent memorization, singularity, causal economics or pristine-test claims.
+
+A collapsed historical activity-log section shows at most 200 model-relevant raw JSONL event projections and downloads the complete original audit log, manifest and relevant checksum-verified exports. The generated Markdown 5W1H report is created in memory. Raw events, derived historical report rows and strict training-validation transcripts remain visibly distinct.
 
 ## Generate or validate evidence offline
 

@@ -86,6 +86,20 @@ def test_load_compatible_training_audit_validates_and_exposes_downloads(tmp_path
     assert downloads["complete_jsonl"]["content"] == log.read_bytes()
     assert downloads["audit_manifest"]["content"] == manifest_path.read_bytes()
     assert all(item["sha256"] == _sha256(item["content"]) for item in audit["downloads"])
+    assert audit["event_count"] == 1
+    assert audit["event_preview"] == [
+        {
+            "sequence": 1,
+            "timestamp": None,
+            "operation": "create_final_estimator",
+            "status": "completed",
+            "model": None,
+            "fold_id": None,
+            "trial_id": None,
+            "message": None,
+            "evidence_ref": log.name + "#sequence=1",
+        }
+    ]
 
 
 def test_training_audit_rejects_incomplete_source_mismatch_and_bad_checksum(tmp_path):
@@ -131,6 +145,30 @@ def test_active_evidence_downloads_are_byte_exact_and_checksum_verified():
         source = ROOT / download["path"]
         assert download["content"] == source.read_bytes()
         assert download["sha256"] == _sha256(download["content"])
+
+
+def test_training_audit_event_preview_is_bounded_and_rejects_non_objects(tmp_path):
+    root, log, manifest_path = _audit_workspace(tmp_path)
+    event = json.loads(log.read_text())
+    log.write_text(
+        "".join(
+            json.dumps(event | {"sequence": index, "operation": "evaluate_rf_tuning_trial"})
+            + "\n"
+            for index in range(1, 251)
+        ),
+        encoding="utf-8",
+    )
+    audit = load_compatible_training_audit(root)
+    assert audit["available"] is True
+    assert audit["event_count"] == 250
+    assert len(audit["event_preview"]) == 200
+    assert audit["event_preview"][0]["sequence"] == 1
+    assert audit["event_preview"][-1]["sequence"] == 200
+
+    log.write_text(json.dumps(["not", "an", "event"]) + "\n", encoding="utf-8")
+    audit = load_compatible_training_audit(root)
+    assert audit["available"] is False
+    assert "event" in audit["reason"].lower()
 
 
 def test_training_audit_rejects_symlinked_export(tmp_path):

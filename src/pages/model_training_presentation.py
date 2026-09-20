@@ -71,6 +71,8 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
             events = [json.loads(line) for line in log_bytes.splitlines() if line.strip()]
             if not events:
                 raise ValueError("training audit JSONL is empty")
+            if any(not isinstance(event, dict) for event in events):
+                raise ValueError("training audit event must be a JSON object")
             audit_run_id = str(manifest.get("audit_run_id", ""))
             pipeline_run_id = str(manifest.get("pipeline_run_id", ""))
             if any(
@@ -127,6 +129,37 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
                 ),
                 {},
             )
+            relevant_operations = {
+                "temporal_cv_evaluation",
+                "evaluate_rf_tuning_trial",
+                "rank_rf_n_estimators",
+                "record_applied_model_selection",
+                "record_rf_manual_tuning_summary",
+                "create_final_estimator",
+                "score_locked_test",
+                "predict_locked_test",
+                "compute_locked_test_permutation_importance",
+                "summarize_locked_test_absolute_error",
+            }
+            relevant_events = [
+                event for event in events if event.get("operation") in relevant_operations
+            ]
+            event_preview = [
+                {
+                    "sequence": event.get("sequence"),
+                    "timestamp": event.get("timestamp"),
+                    "operation": event.get("operation"),
+                    "status": event.get("status"),
+                    "model": event.get("model") or event.get("model_name"),
+                    "fold_id": event.get("fold_id") or event.get("fold"),
+                    "trial_id": event.get("trial_id") or event.get("evaluation_id"),
+                    "message": (
+                        str(event["message"])[:500] if event.get("message") is not None else None
+                    ),
+                    "evidence_ref": f"{log_path.name}#sequence={event.get('sequence')}",
+                }
+                for event in relevant_events[:200]
+            ]
             return {
                 "available": True,
                 "audit_run_id": audit_run_id,
@@ -134,6 +167,9 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
                 "training_status": manifest["training_status"],
                 "source_sha256": source_sha256,
                 "selection_source": selection.get("selection_source"),
+                "event_count": len(events),
+                "relevant_event_count": len(relevant_events),
+                "event_preview": event_preview,
                 "downloads": downloads,
             }
         except (OSError, ValueError, json.JSONDecodeError) as exc:

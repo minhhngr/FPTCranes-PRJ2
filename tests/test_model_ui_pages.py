@@ -34,6 +34,109 @@ def test_model_pages_open_from_real_entrypoint(label, title):
     assert any(item.value == title for item in app.title)
 
 
+@pytest.mark.parametrize(
+    ("label", "training_expander"),
+    [
+        (
+            "4. Model Comparison",
+            "Latest training validation: folds and candidate models",
+        ),
+        (
+            "5. Best Model & Importance",
+            "Latest training validation: tuning and Full/Top-2 variants",
+        ),
+    ],
+)
+def test_training_validation_unavailable_is_truthful_collapsed_and_actionable(
+    label, training_expander
+):
+    app = open_admin_page(label)
+    assert any(item.value == "Training & validation evidence" for item in app.subheader)
+    assert any(
+        "No verified training-validation evidence" in item.value
+        for item in app.warning
+    )
+    expanders = [item for item in app.expander if item.label == training_expander]
+    assert len(expanders) == 1
+    assert expanders[0].proto.expanded is False
+    if label.startswith("5."):
+        final_expanders = [
+            item
+            for item in app.expander
+            if item.label
+            == "Latest training validation: holdout, explainability and uncertainty"
+        ]
+        assert len(final_expanders) == 1
+        assert final_expanders[0].proto.expanded is False
+    assert any(item.value == "Training validation unavailable" for item in app.info)
+    assert any("training_validation.py inspect --workspace ." in item.value for item in app.code)
+    rendered = "\n".join(
+        str(item.value) for item in [*app.markdown, *app.caption, *app.code]
+    )
+    assert "tests/fixtures" not in rendered
+    assert "/home/" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("label", "expected_models", "expected_record_count"),
+    [
+        (
+            "4. Model Comparison",
+            [
+                "Random Forest",
+                "Gradient Boosting",
+                "Ridge Regression",
+                "Dummy Median",
+                "Linear Regression",
+            ],
+            5,
+        ),
+        (
+            "5. Best Model & Importance",
+            ["Random Forest (selected family)", "Full 13", "Top 2"],
+            3,
+        ),
+    ],
+)
+def test_current_pages_show_historical_5w1h_report_and_raw_training_log(
+    monkeypatch, label, expected_models, expected_record_count
+):
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("training/model operation reached by historical report UI")
+
+    monkeypatch.setattr("joblib.load", forbidden)
+    monkeypatch.setattr("ai_job_market.training_validation.run_workspace", forbidden)
+    monkeypatch.setattr("ai_job_market.training_validation.fit_final_variants", forbidden)
+    monkeypatch.setattr("ai_job_market.training_validation.score_frozen_pipelines", forbidden)
+    monkeypatch.setattr("ai_job_market.training_validation.publish_staged_pack", forbidden)
+
+    app = open_admin_page(label)
+    assert not app.exception
+    assert any(item.value == "Historical Branch B training report" for item in app.subheader)
+    assert any("Historical primary-pipeline + supplemental evidence" in item.value for item in app.warning)
+    markdown = [item.value for item in app.markdown]
+    assert sum(value.startswith("**Who:**") for value in markdown) == expected_record_count
+    for question in ("What", "When", "Where", "Why", "How"):
+        assert sum(value.startswith(f"**{question}:**") for value in markdown) == expected_record_count
+    for model in expected_models:
+        assert f"#### {model}" in markdown
+    assert any("Branch A cluster assignments are not salary-model features" in value for value in markdown)
+    assert "Historical training activity log and downloads" in [
+        item.label for item in app.expander
+    ]
+    event_tables = [
+        item.value
+        for item in app.dataframe
+        if {"sequence", "operation", "status", "evidence_ref"} <= set(item.value.columns)
+    ]
+    assert event_tables
+    assert len(event_tables[0]) <= 200
+    buttons = {item.label for item in app.get("download_button")}
+    assert "Download historical 5W1H report" in buttons
+    assert "Download complete structured training log" in buttons
+    assert any(item.value == "Training validation unavailable" for item in app.info)
+
+
 def _plot_specs(app: AppTest) -> dict[str, dict]:
     return {chart.key: json.loads(chart.proto.spec) for chart in app.get("plotly_chart")}
 

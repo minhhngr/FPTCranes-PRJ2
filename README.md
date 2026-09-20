@@ -7,6 +7,18 @@ The central architecture is **outputs first**: the offline pipeline creates data
 
 Training audit logs and interpretation notes are documented in `docs/TRAINING_AUDIT.md`. The evidence-backed Pages 04–06, offline supplemental-artifact command, scenario validation, and CSV contracts are documented in `docs/MODEL_UI.md`.
 
+The gated v2 regression-validation workflow and immutable evidence-pack semantics are documented in `docs/TRAINING_VALIDATION.md`. Its safe preflight is:
+
+```bash
+.venv/bin/python training_validation.py inspect --workspace . --policy config/training_validation.json
+```
+
+Preflight performs no fitting or prediction. The committed dataset is expected to remain blocked until eligible future prepared data and exact partition approval exist.
+
+Pages 04–05 now read the latest valid complete `training-validation/v1` pack, when available, through an additive always-visible trust overview and collapsed read-only detail expanders. They show exact outer/inner folds, candidate and tuning/final evidence, raw logs, and a source-referenced evidence-derived transcript. This source remains independent from the existing supplemental `ui_evidence`; if absent or invalid, the UI says `Training validation unavailable` and never substitutes fixtures, historical metrics, or hardcoded values.
+
+The current workspace additionally shows a clearly labelled **Historical Branch B training report** from the existing source-compatible primary audit plus active supplemental evidence: five Page 04 candidate 5W1H records, selected/Full/Top-2 Page 05 records, bounded raw training events, and complete verified log downloads. This historical report discloses locked-test exposure and never masquerades as strict unseen validation. It explains the shared upstream/Branch A → Branch B sequence without treating Branch A clusters as salary-model features. Existing evidence is reused; Streamlit never trains, predicts, deserializes bundles, publishes evidence, accesses the reserve, activates a model, or provides a training button. See `docs/MODEL_UI.md`.
+
 ## End-to-end workflow
 
 ### Common Foundation
