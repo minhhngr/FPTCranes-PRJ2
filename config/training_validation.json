@@ -1,0 +1,48 @@
+{
+  "schema_version": "training-validation-policy/v1",
+  "seed": 42,
+  "split_targets": {
+    "train": 0.8,
+    "evaluation_holdout": 0.19,
+    "inference_reserve": 0.01
+  },
+  "outer_folds": 5,
+  "inner_folds": 3,
+  "top2_features": [
+    "job_category",
+    "years_of_experience"
+  ],
+  "n_jobs": 1,
+  "permutation_repeats": 12,
+  "diagnostic_gap": 0.2,
+  "small_subgroup_rows": 20,
+  "runtime_protocol": {
+    "method_version": "warm-train-predict/v1",
+    "warmups": 3,
+    "measured_calls": 30,
+    "batch_sizes": [1, 100],
+    "max_benchmark_predict_calls": 1784,
+    "numerical_threads": 1,
+    "execution": "sequential"
+  },
+  "feature_families": {
+    "job_domain": ["job_title", "job_category"],
+    "experience_education": ["years_of_experience", "education_required"],
+    "geography": ["city", "country"],
+    "company_work": ["remote_work", "company_size", "industry"],
+    "demand_benefits": ["demand_score", "benefits_score_10"],
+    "skills": ["required_skills", "skill_count"]
+  },
+  "rf_search": {
+    "anchors": [
+      {"n_estimators": 300, "min_samples_leaf": 2, "max_features": 0.7, "max_depth": 20},
+      {"n_estimators": 100, "min_samples_leaf": 2, "max_features": 0.8, "max_depth": null},
+      {"n_estimators": 80, "min_samples_leaf": 1, "max_features": 0.8, "max_depth": null},
+      {"n_estimators": 200, "min_samples_leaf": 1, "max_features": 0.7, "max_depth": 20}
+    ],
+    "n_estimators": [50, 100, 150, 200, 250, 300],
+    "max_depth": [10, 15, 20, 25, 30, null],
+    "min_samples_leaf": [1, 2, 4, 8],
+    "max_features": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  }
+}

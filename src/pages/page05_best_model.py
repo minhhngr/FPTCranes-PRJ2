@@ -28,6 +28,10 @@ from .model_training_presentation import (
     tuning_decision_table,
     tuning_method_guide,
 )
+from .training_validation_presentation import (
+    render_historical_training_report,
+    render_page05_training_validation,
+)
 
 
 def _metrics(st, values):
@@ -108,6 +112,7 @@ def render(st, root, role="admin"):
     style_page(st)
     st.title("5. Best model, diagnostics and uncertainty")
     st.caption("Saved full model · frozen-configuration CV · historically scored test evidence")
+    render_page05_training_validation(st, root)
     try:
         manifest, tables = load_evidence(root)
         variants = tables["variant_metrics"]
@@ -118,6 +123,9 @@ def render(st, root, role="admin"):
             f'PYTHONPATH=src .venv/bin/python -m ai_job_market.ui_evidence --workspace "{root}"'
         )
         return
+
+    audit = load_compatible_training_audit(root)
+    render_historical_training_report(st, manifest, tables, audit, page="page05")
 
     test = variants[
         (variants.feature_variant == "full") & (variants.evaluation == "historical_test")
@@ -286,7 +294,6 @@ def render(st, root, role="admin"):
         except (KeyError, TypeError, ValueError) as exc:
             tuning_guide = None
             tuning_guide_error = str(exc)
-        audit = load_compatible_training_audit(root)
         with st.expander("Priority guide: How hyperparameter tuning works", expanded=False):
             if tuning_guide is None:
                 st.warning(f"Tuning methodology guide unavailable: {tuning_guide_error}")
