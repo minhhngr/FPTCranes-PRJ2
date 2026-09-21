@@ -2348,6 +2348,43 @@ def run_segmentation(
         pairwise_ari,
         silhouette_tolerance=float(representation_silhouette_tolerance),
     )
+    # Persist presentation-ready R0–R4 evidence alongside canonical identifiers.
+    _short_r = {
+        "R0_GLOBAL_PCA": "R0",
+        "R1_FAMILYWISE_PCA": "R1",
+        "R2_NO_JOB_CATEGORY": "R2",
+        "R3_NO_YEARS_EXPERIENCE": "R3",
+        "R4_NO_JOB_CATEGORY_NO_YEARS": "R4",
+    }
+    representation_comparison = pd.DataFrame(
+        {
+            "R": representation_summary["representation_id"].map(_short_r).fillna(
+                representation_summary["representation_id"]
+            ),
+            "representation_id": representation_summary["representation_id"],
+            "representation_label": representation_summary.get("representation_label"),
+            "algorithm": representation_summary.get("algorithm"),
+            "k": representation_summary.get("k"),
+            "Silhouette": representation_summary.get("silhouette"),
+            "Seed ARI": representation_summary.get("stability_ari"),
+            "Subsample ARI": representation_summary.get("resample_stability_ari_mean"),
+            "Min cluster share": representation_summary.get("min_cluster_share"),
+            "Cross-R ARI": representation_summary.get("mean_cross_representation_ari"),
+            "Latent dimensions": representation_summary.get("latent_dimensions"),
+            "Eligible": representation_summary.get("eligible"),
+            "Near-best separation": representation_summary.get("within_representation_tolerance"),
+            "Selected": representation_summary.get("selected_representation"),
+            "excluded_features": representation_summary.get("excluded_features"),
+        }
+    )
+    representation_comparison["Selected"] = representation_comparison["Selected"].map(
+        lambda x: "★ SELECTED" if bool(x) else ""
+    )
+    for column in ("Eligible", "Near-best separation"):
+        representation_comparison[column] = representation_comparison[column].map(
+            lambda x: "PASS" if bool(x) else "FAIL"
+        )
+
     o1_rep = reps[o1_rep_id]
 
     # Exhaustive official O1 K study.
@@ -3106,6 +3143,7 @@ def run_segmentation(
         ),
         # Existing O1 R0-R4 evidence
         "representation_summary": representation_summary,
+        "representation_comparison": representation_comparison,
         "representation_candidate_metrics": representation_candidate_metrics,
         "representation_candidate_assignments": representation_candidate_assignments,
         "representation_pairwise_ari": pairwise_ari,

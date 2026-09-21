@@ -63,6 +63,7 @@ EVIDENCE_NAMES = [
     "o2_visual_coordinates",
     # Representation-robustness evidence (R0/R1/R2/R3/R4 when available)
     "representation_summary",
+    "representation_comparison",
     "representation_pairwise_ari",
     "representation_candidate_metrics",
     "representation_pca_variance",
@@ -940,6 +941,243 @@ def _render_feature_space_option_compare(
         "feature_space_selection",
         _src("page03_segmentation.why_this_feature_space_option_is_selected_32da98a"),
     )
+
+
+
+def _render_representation_overview(
+    st,
+    rep: pd.DataFrame,
+    comparison: pd.DataFrame,
+    rationale: dict,
+    selected_representation: str,
+) -> None:
+    """Always-visible R0-R4 summary for the A6 decision page.
+
+    The offline pipeline is the source of truth.  This renderer only reads the
+    persisted representation evidence and makes the official R decision visible
+    without requiring the user to open an expander.
+    """
+    if rep.empty or "representation_id" not in rep.columns:
+        _render_missing(st, "representation_summary.csv")
+        return
+
+    short_map = {
+        "R0_GLOBAL_PCA": "R0",
+        "R1_FAMILYWISE_PCA": "R1",
+        "R2_NO_JOB_CATEGORY": "R2",
+        "R3_NO_YEARS_EXPERIENCE": "R3",
+        "R4_NO_JOB_CATEGORY_NO_YEARS": "R4",
+    }
+
+    r = rep.copy()
+    r["representation_id"] = r["representation_id"].astype(str)
+    r["R"] = r["representation_id"].map(short_map).fillna(r["representation_id"])
+    for col in [
+        "silhouette",
+        "stability_ari",
+        "resample_stability_ari_mean",
+        "min_cluster_share",
+        "mean_cross_representation_ari",
+        "latent_dimensions",
+    ]:
+        if col in r.columns:
+            r[col] = pd.to_numeric(r[col], errors="coerce")
+
+    if "selected_representation" in r.columns:
+        r["_selected"] = _truthy(r["selected_representation"])
+    else:
+        r["_selected"] = r["representation_id"].eq(str(selected_representation))
+
+    if "eligible" in r.columns:
+        r["_eligible"] = _truthy(r["eligible"])
+    else:
+        r["_eligible"] = False
+
+    tolerance = float(
+        rationale.get(
+            "representation_silhouette_tolerance",
+            rationale.get("silhouette_tolerance", 0.02),
+        )
+    )
+    if "within_representation_tolerance" in r.columns:
+        r["_near_best"] = _truthy(r["within_representation_tolerance"])
+    elif "silhouette" in r.columns:
+        r["_near_best"] = r["silhouette"] >= r["silhouette"].max() - tolerance
+    else:
+        r["_near_best"] = False
+
+    st.markdown(_tr("page03_segmentation.overview_title"))
+    st.caption(_tr("page03_segmentation.overview_caption"))
+
+    # ------------------------------------------------------------------
+    # 1) Scorecards — one card per R
+    # ------------------------------------------------------------------
+    cols = st.columns(min(5, max(1, len(r))))
+    ordered = r.sort_values("R")
+    for i, (_, row) in enumerate(ordered.iterrows()):
+        with cols[i % len(cols)]:
+            selected = bool(row.get("_selected", False))
+            title = f"★ {row['R']}" if selected else str(row["R"])
+            sil = row.get("silhouette")
+            st.metric(title, f"Sil {sil:.3f}" if pd.notna(sil) else "Sil —")
+            seed = row.get("stability_ari")
+            subs = row.get("resample_stability_ari_mean")
+            share = row.get("min_cluster_share")
+            cross = row.get("mean_cross_representation_ari")
+            dims = row.get("latent_dimensions")
+            eligibility = _tr("status.pass" if bool(row.get("_eligible", False)) else "status.fail")
+            near_best = _tr("status.pass" if bool(row.get("_near_best", False)) else "status.fail")
+            st.caption(_tr(
+                "page03_segmentation.overview_scorecard",
+                seed=_fmt_value(seed), subsample=_fmt_value(subs),
+                share=_fmt_value(share, digits=1, pct=True), cross=_fmt_value(cross),
+                dimensions=_fmt_value(dims, digits=0), eligible=eligibility, near_best=near_best,
+            ))
+            if selected:
+                st.success(_tr("page03_segmentation.overview_selected"))
+
+    # ------------------------------------------------------------------
+    # 2) Metric heatmap + latent-dimension chart
+    # ------------------------------------------------------------------
+    st.markdown(_tr("page03_segmentation.overview_metrics"))
+    c1, c2 = st.columns([1.55, 1.0])
+
+    with c1:
+        metric_map = {
+            "silhouette": "Silhouette",
+            "stability_ari": "Seed ARI",
+            "resample_stability_ari_mean": "Subsample ARI",
+            "min_cluster_share": "Min cluster share",
+            "mean_cross_representation_ari": "Cross-R ARI",
+        }
+        metric_cols_present = [c for c in metric_map if c in r.columns]
+        if metric_cols_present:
+            heat = ordered.set_index("R")[metric_cols_present].copy()
+            heat.columns = [metric_map[c] for c in metric_cols_present]
+            display_rows = [
+                (f"★ {idx}" if bool(ordered.loc[ordered["R"].eq(idx), "_selected"].iloc[0]) else idx)
+                for idx in heat.index
+            ]
+            z = heat.to_numpy(dtype=float)
+            text_values = np.empty_like(z, dtype=object)
+            for rr in range(z.shape[0]):
+                for cc in range(z.shape[1]):
+                    val = z[rr, cc]
+                    col_name = heat.columns[cc]
+                    if pd.isna(val):
+                        text_values[rr, cc] = "—"
+                    elif col_name == "Min cluster share":
+                        text_values[rr, cc] = f"{val:.1%}"
+                    else:
+                        text_values[rr, cc] = f"{val:.3f}"
+            fig = go.Figure(
+                data=go.Heatmap(
+                    z=z,
+                    x=list(heat.columns),
+                    y=display_rows,
+                    text=text_values,
+                    texttemplate="%{text}",
+                    zmin=0,
+                    zmax=1,
+                    colorbar=dict(title=_tr("page03_segmentation.overview_metric_label")),
+                    hovertemplate=(f"R=%{{y}}<br>{_label('Metric')}=%{{x}}<br>"
+                                   f"{_label('Value')}=%{{text}}<extra></extra>"),
+                )
+            )
+            fig.update_layout(
+                title=_tr("page03_segmentation.overview_heatmap"),
+                xaxis_title="",
+                yaxis_title="Representation",
+            )
+            show_plot(st, fig, "p3_rcompare_metric_heatmap_visible")
+        else:
+            st.info(_tr("page03_segmentation.overview_no_metrics"))
+
+    with c2:
+        if "latent_dimensions" in ordered.columns:
+            chart_df = ordered[["R", "latent_dimensions", "_selected"]].copy()
+            chart_df["Status"] = np.where(
+                chart_df["_selected"], _tr("page03_segmentation.overview_selected"),
+                _tr("page03_segmentation.overview_alternative"),
+            )
+            fig = px.bar(
+                chart_df,
+                x="R",
+                y="latent_dimensions",
+                color="Status",
+                text="latent_dimensions",
+                title=_tr("page03_segmentation.overview_dimensions"),
+                labels={"latent_dimensions": "Latent dimensions"},
+            )
+            fig.update_traces(textposition="outside")
+            show_plot(st, fig, "p3_rcompare_latent_dims_visible")
+        else:
+            st.info(_tr("page03_segmentation.overview_no_dimensions"))
+
+    # ------------------------------------------------------------------
+    # 3) Exact decision table requested for presentation / export
+    # ------------------------------------------------------------------
+    st.markdown(_tr("page03_segmentation.overview_exact"))
+    if comparison is not None and not comparison.empty:
+        table = comparison.copy()
+    else:
+        table = pd.DataFrame(
+            {
+                "R": ordered["R"],
+                "Silhouette": ordered.get("silhouette"),
+                "Seed ARI": ordered.get("stability_ari"),
+                "Subsample ARI": ordered.get("resample_stability_ari_mean"),
+                "Min cluster share": ordered.get("min_cluster_share"),
+                "Cross-R ARI": ordered.get("mean_cross_representation_ari"),
+                "Latent dimensions": ordered.get("latent_dimensions"),
+                "Eligible": np.where(ordered["_eligible"], "PASS", "FAIL"),
+                "Near-best separation": np.where(ordered["_near_best"], "PASS", "FAIL"),
+                "Selected": np.where(ordered["_selected"], "★ SELECTED", ""),
+            }
+        )
+
+    # Keep exactly the requested headline fields first, with useful traceability after them.
+    requested = [
+        "R",
+        "Silhouette",
+        "Seed ARI",
+        "Subsample ARI",
+        "Min cluster share",
+        "Cross-R ARI",
+        "Latent dimensions",
+        "Eligible",
+        "Near-best separation",
+        "Selected",
+    ]
+    requested = [c for c in requested if c in table.columns]
+    trailing = [
+        c
+        for c in ["representation_id", "representation_label", "algorithm", "k", "excluded_features"]
+        if c in table.columns
+    ]
+    table = table[requested + trailing]
+    downloadable_table(
+        st,
+        table,
+        _tr("page03_segmentation.overview_export"),
+        "p3_r0_r4_actual_comparison",
+        file_name="representation_comparison.csv",
+        height=300,
+    )
+
+    selected_row = ordered[ordered["_selected"]]
+    if not selected_row.empty:
+        sr = selected_row.iloc[0]
+        st.success(_tr(
+            "page03_segmentation.overview_summary",
+            representation=sr["R"],
+            label=_display(sr.get("representation_label", sr["representation_id"])),
+            silhouette=_fmt_value(sr.get("silhouette")),
+            seed=_fmt_value(sr.get("stability_ari")),
+            subsample=_fmt_value(sr.get("resample_stability_ari_mean")),
+            cross=_fmt_value(sr.get("mean_cross_representation_ari")),
+            dimensions=_fmt_value(sr.get("latent_dimensions"), digits=0),
+        ))
 
 
 def _render_representation_compare(
@@ -2402,9 +2640,23 @@ def render(st, root, role="admin"):
             insights=insights,
         )
 
-        # R0-R4 remain the internal robustness study for O1 only.
+        # R0-R4 official robustness overview is intentionally visible by default.
+        # Detailed candidate-level diagnostics remain inside the expander below.
+        _render_representation_overview(
+            st,
+            rep=rep,
+            comparison=e["representation_comparison"].copy(),
+            rationale=rationale,
+            selected_representation=str(
+                meta.get(
+                    "o1_selected_representation",
+                    rationale.get("o1_selected_representation", ""),
+                )
+            ),
+        )
+
         with st.expander(
-            _tr("page03_segmentation.o1_internal_robustness_compare_r0_r1_r2_2db5566"),
+            _tr("page03_segmentation.overview_advanced"),
             expanded=False,
         ):
             _render_representation_compare(
