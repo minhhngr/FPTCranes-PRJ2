@@ -9,6 +9,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from components.language import get_translator
+from components.presentation import (
+    _display,
+    _label,
+    _option_label,
+    _src,
+    _tr,
+    display_column_config,
+    display_frame,
+    translate_figure,
+)
 
 
 def read_csv(root: Path, rel: str) -> pd.DataFrame:
@@ -32,12 +42,12 @@ def money(x: float) -> str:
 def insight_box(st, text: str, kind: str = "info"):
     if not text:
         return
-    getattr(st, kind if kind in {"info", "warning", "success", "error"} else "info")(text)
+    getattr(st, kind if kind in {"info", "warning", "success", "error"} else "info")(_display(text))
 
 
 def style_page(st):
     st.markdown(
-        """
+        _display("""
     <style>
     .block-container {padding-top: 1.0rem; padding-bottom: 2rem; max-width: 1580px;}
     [data-testid="stMetric"] {
@@ -60,7 +70,7 @@ def style_page(st):
     .stage-note {background: rgba(88, 191, 163, 0.1); border-left: 5px solid #58bfa3; padding: 12px 16px; border-radius: 8px; margin: 8px 0 14px 0;}
     .small-note {background: rgba(246, 227, 178, 0.1); border: 1px solid rgba(246, 227, 178, 0.3); padding: 10px 14px; border-radius: 10px;}
     </style>
-    """,
+    """),
         unsafe_allow_html=True,
     )
 
@@ -68,7 +78,7 @@ def style_page(st):
 def metric_cols(st, items):
     cols = st.columns(len(items))
     for c, (label, value) in zip(cols, items):
-        c.metric(label, value)
+        c.metric(_display(label), _display(value))
 
 
 def show_plot(st, fig, key=None):
@@ -82,12 +92,15 @@ def show_plot(st, fig, key=None):
     if updates:
         fig.update_layout(**updates)
     st.plotly_chart(
-        fig, width="stretch", key=key, config={"displaylogo": False, "responsive": True}
+        translate_figure(fig),
+        width="stretch",
+        key=key,
+        config={"displaylogo": False, "responsive": True},
     )
 
 
 def chart_selector(st, label, options, key, index=0):
-    return st.selectbox(label, options, index=index, key=key)
+    return st.selectbox(_display(label), options, index=index, key=key, format_func=_option_label())
 
 
 def category_multiselect(st, df, col, label=None, key=None, default_all=True, max_default=12):
@@ -95,7 +108,13 @@ def category_multiselect(st, df, col, label=None, key=None, default_all=True, ma
         return []
     values = sorted(map(str, df[col].dropna().unique()))
     default = values if default_all and len(values) <= max_default else []
-    return st.multiselect(label or col.replace("_", " ").title(), values, default=default, key=key)
+    return st.multiselect(
+        _display(label or col.replace("_", " ").title()),
+        values,
+        default=default,
+        key=key,
+        format_func=_option_label(),
+    )
 
 
 def apply_filters(df: pd.DataFrame, filters: dict[str, list[str]]) -> pd.DataFrame:
@@ -110,7 +129,7 @@ def downloadable_table(
     st, df: pd.DataFrame, title: str, key: str, file_name: str | None = None, height=350
 ):
     i18n = get_translator(st)
-    st.markdown(f"#### {title}")
+    st.markdown(f"#### {_display(title)}")
     st.dataframe(i18n.frame(df), width="stretch", hide_index=True, height=height)
     st.download_button(
         i18n.text("common.download_csv"),
@@ -143,56 +162,61 @@ def ranked_bar(
 
 def dynamic_family_comment(assign: pd.DataFrame, family: str) -> str:
     if assign.empty:
-        return "No data available for the current filters."
-    if family == "Job Domain":
+        return _tr("common.no_data_available_for_the_current_filters_0e61198")
+    if family == _src("common.job_domain_9e966d1"):
         g = (
             assign.groupby("cluster")["job_category"]
             .agg(lambda s: s.value_counts().index[0])
             .to_dict()
         )
         return (
-            "Dominant job-domain labels by cluster: "
+            _tr("common.dominant_job_domain_labels_by_cluster_9645ced")
             + "; ".join(f"C{k}: {v}" for k, v in sorted(g.items()))
             + "."
         )
-    if family == "Skills":
+    if family == _src("common.skills_66d0f52"):
         s = assign.groupby("cluster")["skill_count"].mean().round(1).to_dict()
         return (
-            "Average normalized skill count by cluster: "
+            _tr("common.average_normalized_skill_count_by_cluster_116a5a0")
             + "; ".join(f"C{k}: {v}" for k, v in sorted(s.items()))
             + "."
         )
-    if family == "Experience":
+    if family == _src("common.experience_8eab0f0"):
         s = assign.groupby("cluster")["years_of_experience"].mean().round(1).to_dict()
         return (
-            "Mean years of experience by cluster: "
+            _tr("common.mean_years_of_experience_by_cluster_d39aef6")
             + "; ".join(f"C{k}: {v}" for k, v in sorted(s.items()))
             + "."
         )
-    if family == "Company":
+    if family == _src("common.company_de4743c"):
         g = (
             assign.groupby("cluster")["company_size"]
             .agg(lambda s: s.value_counts().index[0])
             .to_dict()
         )
         return (
-            "Most common company size by cluster: "
+            _tr("common.most_common_company_size_by_cluster_1dda78f")
             + "; ".join(f"C{k}: {v}" for k, v in sorted(g.items()))
             + "."
         )
-    if family == "Geography":
+    if family == _src("common.geography_f3c7380"):
         g = assign.groupby("cluster")["country"].agg(lambda s: s.value_counts().index[0]).to_dict()
         return (
-            "Most common country by cluster: "
+            _tr("common.most_common_country_by_cluster_9b2b249")
             + "; ".join(f"C{k}: {v}" for k, v in sorted(g.items()))
             + "."
         )
-    if family == "Demand / Benefits":
+    if family == _src("common.demand_benefits_e58ed2c"):
         g = assign.groupby("cluster")[["demand_score", "benefits_score_10"]].mean().round(1)
         return (
-            "Demand/benefits means by cluster: "
+            _tr("common.demand_benefits_means_by_cluster_5512057")
             + "; ".join(
-                f"C{i}: demand {r.demand_score}, benefits {r.benefits_score_10}"
+                _tr(
+                    "common.c_value0_demand_value1_benefits_value2_b573125",
+                    value0=f"{i}",
+                    value1=f"{r.demand_score}",
+                    value2=f"{r.benefits_score_10}",
+                )
                 for i, r in g.iterrows()
             )
             + "."
@@ -216,7 +240,10 @@ def interpretation_card(
     scientific instead of becoming generic prose.
     """
     t = get_translator(st).text
-    title = title if title is not None else t("interpretation.title")
+    title = _display(title) if title is not None else t("interpretation.title")
+    observation = _display(observation)
+    interpretation = _display(interpretation)
+    action = _display(action)
     icon = {"info": "🔎", "success": "✅", "warning": "⚠️", "error": "⛔"}.get(tone, "🔎")
     bg = {"info": "#f4f9ff", "success": "#f2fbf5", "warning": "#fff9ed", "error": "#fff2f2"}.get(
         tone, "#f4f9ff"
@@ -227,16 +254,29 @@ def interpretation_card(
         "warning": "#f3c96b",
         "error": "#ef9b9b",
     }.get(tone, "#9bc8f2")
-    action_html = f"<div><b>{t('interpretation.action')}</b> {action}</div>" if action else ""
+    action_html = (
+        _tr(
+            "common.div_b_value0_b_value1_div_f246a2d",
+            value0=f"{t('interpretation.action')}",
+            value1=f"{action}",
+        )
+        if action
+        else ""
+    )
     st.markdown(
-        f"""
-        <div style="background:{bg};border:1px solid {border};border-left:5px solid {border};padding:12px 15px;border-radius:10px;margin:8px 0 16px 0;">
-          <div style="font-weight:700;margin-bottom:6px;">{icon} {title}</div>
-          <div><b>{t('interpretation.observed')}</b> {observation}</div>
-          <div><b>{t('interpretation.meaning')}</b> {interpretation}</div>
-          {action_html}
-        </div>
-        """,
+        _tr(
+            "common.div_style_background_value0_border_1px_solid_73424bb",
+            value0=f"{bg}",
+            value1=f"{border}",
+            value2=f"{border}",
+            value3=f"{icon}",
+            value4=f"{title}",
+            value5=f"{t('interpretation.observed')}",
+            value6=f"{observation}",
+            value7=f"{t('interpretation.meaning')}",
+            value8=f"{interpretation}",
+            value9=f"{action_html}",
+        ),
         unsafe_allow_html=True,
     )
 

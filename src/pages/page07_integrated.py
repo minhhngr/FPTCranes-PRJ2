@@ -5,14 +5,27 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from components.presentation import (
+    _display,
+    _label,
+    _option_label,
+    _src,
+    _tr,
+    display_column_config,
+    display_frame,
+    translate_figure,
+)
+
 from .common import *
 
 
 def render(st, root, role="admin"):
     style_page(st)
-    st.title("7. Integrated Market Insight")
+    st.title(_tr("navigation.page07"))
     st.caption(
-        "Decision Layer — combine unsupervised structural segments with supervised salary evidence after both branches finish"
+        _tr(
+            "page07_integrated.decision_layer_combine_unsupervised_structural_segments_with_c108eca"
+        )
     )
     seg = read_csv(root, "07_integrated_insight/segment_salary_summary.csv")
     pred = read_csv(root, "07_integrated_insight/predicted_salary_by_segment.csv")
@@ -20,26 +33,44 @@ def render(st, root, role="admin"):
     assign = read_csv(root, "03_ai_job_market_segmentation/cluster_assignments.csv")
 
     cluster_opts = sorted(assign.cluster.astype(int).unique().tolist())
-    with st.expander("Integrated insight filters", expanded=True):
+    with st.expander(_tr("page07_integrated.integrated_insight_filters_0fffb22"), expanded=True):
         c1, c2, c3, c4 = st.columns(4)
-        clusters = c1.multiselect("Clusters", cluster_opts, default=cluster_opts, key="p7_clusters")
+        clusters = c1.multiselect(
+            _tr("page07_integrated.clusters_92d5e4c"),
+            cluster_opts,
+            default=cluster_opts,
+            key="p7_clusters",
+            format_func=_option_label(),
+        )
         countries = c2.multiselect(
-            "Countries", sorted(assign.country.dropna().astype(str).unique()), key="p7_country"
+            _tr("page03_segmentation.countries_8faf7ec"),
+            sorted(assign.country.dropna().astype(str).unique()),
+            key="p7_country",
+            format_func=_option_label(),
         )
         cats = c3.multiselect(
-            "Job categories",
+            _tr("page03_segmentation.job_categories_1fd1537"),
             sorted(assign.job_category.dropna().astype(str).unique()),
             key="p7_cat",
+            format_func=_option_label(),
         )
-        metric = c4.selectbox("Salary metric", ["Mean", "Median"], key="p7_metric")
+        metric = c4.selectbox(
+            _tr("page07_integrated.salary_metric_3bb544b"),
+            [
+                _src("page01_data_basic_clean.mean_727a7d1"),
+                _src("page01_data_basic_clean.median_daab7c4"),
+            ],
+            key="p7_metric",
+            format_func=_option_label(),
+        )
     d = apply_filters(
         assign, {"cluster": [str(x) for x in clusters], "country": countries, "job_category": cats}
     )
     if d.empty:
-        st.warning("No records match the selected filters.")
+        st.warning(_tr("page07_integrated.no_records_match_the_selected_filters_9a7911b"))
         return
 
-    actual_col = "mean" if metric == "Mean" else "median"
+    actual_col = "mean" if metric == _src("page01_data_basic_clean.mean_727a7d1") else "median"
     g = (
         d.groupby("cluster")
         .agg(
@@ -55,22 +86,28 @@ def render(st, root, role="admin"):
     metric_cols(
         st,
         [
-            ("Segments in view", len(g)),
-            ("Records", f"{len(d):,}"),
-            ("Highest salary segment", f"Cluster {int(top.cluster)}"),
-            (f"Highest {metric.lower()} salary", money(top[f"salary_{actual_col}"])),
-            ("Mean demand", f"{d.demand_score.mean():.1f}"),
+            (_tr("page07_integrated.segments_in_view_7788536"), len(g)),
+            (_tr("page01_data_basic_clean.records_47a84e9"), f"{len(d):,}"),
+            (
+                _tr("page07_integrated.highest_salary_segment_e204457"),
+                _tr("page07_integrated.cluster_value0_b49a215", value0=f"{int(top.cluster)}"),
+            ),
+            (
+                _tr("page07_integrated.highest_value0_salary_3aabe1a", value0=f"{metric.lower()}"),
+                money(top[f"salary_{actual_col}"]),
+            ),
+            (_tr("page07_integrated.mean_demand_e9d78ab"), f"{d.demand_score.mean():.1f}"),
         ],
     )
 
     tabs = st.tabs(
         [
-            "Segment Salary",
-            "Prediction Alignment",
-            "Geography",
-            "Job-market Structure",
-            "Interactive Chart Explorer",
-            "Evidence Tables",
+            _tr("page07_integrated.segment_salary_d7cc939"),
+            _tr("page07_integrated.prediction_alignment_5b8b2e5"),
+            _tr("common.geography_f3c7380"),
+            _tr("page07_integrated.job_market_structure_a65910e"),
+            _tr("page01_data_basic_clean.interactive_chart_explorer_236cb24"),
+            _tr("page01_data_basic_clean.evidence_tables_21295b1"),
         ]
     )
     with tabs[0]:
@@ -88,7 +125,7 @@ def render(st, root, role="admin"):
             barmode="group",
             text="salary",
             hover_data=["records"],
-            title="Observed Salary by Structural Segment",
+            title=_src("page07_integrated.observed_salary_by_structural_segment_182c3d1"),
         )
         fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
         show_plot(st, fig, "p7_seg_salary")
@@ -98,16 +135,23 @@ def render(st, root, role="admin"):
             y="annual_salary_usd",
             color=d.cluster.astype(str),
             points="outliers",
-            title="Salary Distribution by Segment",
-            labels={"x": "Cluster", "color": "Cluster"},
+            title=_src("page07_integrated.salary_distribution_by_segment_7158e74"),
+            labels={
+                "x": _src("page03_segmentation.cluster_c137a7f"),
+                "color": _src("page03_segmentation.cluster_c137a7f"),
+            },
         )
         show_plot(st, fig, "p7_seg_box")
         spread = float(g.salary_mean.max() - g.salary_mean.min())
         interpretation_card(
             st,
-            f"Observed mean-salary spread across visible structural segments is {money(spread)}; highest is Cluster {int(g.sort_values('salary_mean', ascending=False).iloc[0].cluster)}.",
-            "Segmentation did not use salary, so this is post-hoc alignment evidence rather than a salary-driven cluster definition.",
-            "Use the spread only as descriptive market context and verify whether the same segment differences persist on future data.",
+            _tr(
+                "page07_integrated.observed_mean_salary_spread_across_visible_structural_19f27f7",
+                value0=f"{money(spread)}",
+                value1=f"{int(g.sort_values('salary_mean', ascending=False).iloc[0].cluster)}",
+            ),
+            _tr("page07_integrated.segmentation_did_not_use_salary_so_this_7b94523"),
+            _tr("page07_integrated.use_the_spread_only_as_descriptive_market_1bbb636"),
             "warning",
         )
 
@@ -127,7 +171,7 @@ def render(st, root, role="admin"):
             barmode="group",
             text="salary",
             hover_data=["MAE", "records"],
-            title="Locked-test Actual vs Predicted Mean Salary by Segment",
+            title=_src("page07_integrated.locked_test_actual_vs_predicted_mean_salary_d763b5f"),
         )
         fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
         show_plot(st, fig, "p7_actual_pred")
@@ -136,21 +180,27 @@ def render(st, root, role="admin"):
             x="cluster",
             y="MAE",
             text="MAE",
-            title="Locked-test MAE by Segment",
+            title=_src("page07_integrated.locked_test_mae_by_segment_bc9b338"),
         )
         fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
         show_plot(st, fig, "p7_seg_mae")
-        st.caption(
-            "Segment labels are not fed into the salary model. Integration happens only after unsupervised and supervised branches have completed independently."
-        )
+        st.caption(_tr("page07_integrated.segment_labels_are_not_fed_into_the_b138df8"))
         if not pp.empty:
             worst = pp.sort_values("MAE", ascending=False).iloc[0]
             bestp = pp.sort_values("MAE").iloc[0]
             interpretation_card(
                 st,
-                f"Locked-test segment MAE ranges from {money(bestp.MAE)} (C{int(bestp.cluster)}) to {money(worst.MAE)} (C{int(worst.cluster)}).",
-                "Prediction error varies across structural segments even though cluster labels are not model inputs; the pattern can reveal heterogeneity that global metrics hide.",
-                "Monitor segment-level error as a diagnostic, but do not feed cluster labels back into the salary model unless an explicit ablation proves stable improvement.",
+                _tr(
+                    "page07_integrated.locked_test_segment_mae_ranges_from_value0_5868fd4",
+                    value0=f"{money(bestp.MAE)}",
+                    value1=f"{int(bestp.cluster)}",
+                    value2=f"{money(worst.MAE)}",
+                    value3=f"{int(worst.cluster)}",
+                ),
+                _tr(
+                    "page07_integrated.prediction_error_varies_across_structural_segments_even_91bc4be"
+                ),
+                _tr("page07_integrated.monitor_segment_level_error_as_a_diagnostic_13e627d"),
                 "warning",
             )
 
@@ -160,17 +210,19 @@ def render(st, root, role="admin"):
             .agg(records=("annual_salary_usd", "size"), salary_mean=("annual_salary_usd", "mean"))
             .reset_index()
         )
-        ge["cluster_label"] = "Cluster " + ge.cluster.astype(int).astype(str)
+        ge["cluster_label"] = _src("page03_segmentation.cluster_cac75ce") + ge.cluster.astype(
+            int
+        ).astype(str)
         fig = px.scatter_geo(
             ge,
             locations="country",
-            locationmode="country names",
+            locationmode=_src("page03_segmentation.country_names_28a73cb"),
             size="records",
             color="cluster_label",
             hover_name="country",
             hover_data={"salary_mean": ":,.0f", "records": True},
-            projection="natural earth",
-            title="Country Footprint by Segment",
+            projection=_src("page03_segmentation.natural_earth_c8d4369"),
+            title=_src("page07_integrated.country_footprint_by_segment_5a103bc"),
         )
         show_plot(st, fig, "p7_country_map")
         city = (
@@ -178,7 +230,13 @@ def render(st, root, role="admin"):
             .agg(records=("annual_salary_usd", "size"), salary_mean=("annual_salary_usd", "mean"))
             .reset_index()
         )
-        topn = st.slider("Top cities by record volume", 10, 50, 25, key="p7_city_topn")
+        topn = st.slider(
+            _tr("page07_integrated.top_cities_by_record_volume_e5d0ab9"),
+            10,
+            50,
+            25,
+            key="p7_city_topn",
+        )
         city = city.nlargest(topn, "records")
         fig = px.scatter(
             city,
@@ -188,18 +246,29 @@ def render(st, root, role="admin"):
             color=city.cluster.astype(str),
             text="city",
             hover_data=["country"],
-            title="City Volume vs Mean Salary",
-            labels={"color": "Cluster", "salary_mean": "Mean salary (USD)"},
+            title=_src("page07_integrated.city_volume_vs_mean_salary_886dfa7"),
+            labels={
+                "color": _src("page03_segmentation.cluster_c137a7f"),
+                "salary_mean": _src("page03_segmentation.mean_salary_usd_5e08331"),
+            },
         )
-        fig.update_traces(textposition="top center")
+        fig.update_traces(textposition=_src("model_evidence.top_center_24b3167"))
         show_plot(st, fig, "p7_city")
         if len(city):
             topcity = city.sort_values("records", ascending=False).iloc[0]
             interpretation_card(
                 st,
-                f"Largest city footprint in the current filters is {topcity.city}, {topcity.country} with {int(topcity.records)} records and mean salary {money(topcity.salary_mean)}.",
-                "High-volume locations can dominate aggregate segment profiles, so geography should be checked before generalizing segment behavior.",
-                "Compare country/city mix with job-domain composition to distinguish geographic concentration from genuine structural segmentation.",
+                _tr(
+                    "page07_integrated.largest_city_footprint_in_the_current_filters_741d476",
+                    value0=f"{topcity.city}",
+                    value1=f"{topcity.country}",
+                    value2=f"{int(topcity.records)}",
+                    value3=f"{money(topcity.salary_mean)}",
+                ),
+                _tr(
+                    "page07_integrated.high_volume_locations_can_dominate_aggregate_segment_5a2a9c6"
+                ),
+                _tr("page07_integrated.compare_country_city_mix_with_job_domain_3b2d12a"),
                 "info",
             )
 
@@ -213,8 +282,8 @@ def render(st, root, role="admin"):
                 y="records",
                 color=dom.cluster.astype(str),
                 barmode="stack",
-                title="Job Domain Mix by Segment",
-                labels={"color": "Cluster"},
+                title=_src("page07_integrated.job_domain_mix_by_segment_f71a16f"),
+                labels={"color": _src("page03_segmentation.cluster_c137a7f")},
             )
             show_plot(st, fig, "p7_domain_mix")
         with c2:
@@ -235,7 +304,7 @@ def render(st, root, role="admin"):
                 color="metric",
                 barmode="group",
                 text="value",
-                title="Demand / Benefits / Experience Profile",
+                title=_src("page07_integrated.demand_benefits_experience_profile_1534dc7"),
             )
             fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
             show_plot(st, fig, "p7_market_profile")
@@ -243,38 +312,44 @@ def render(st, root, role="admin"):
             hi = demand.sort_values("demand_mean", ascending=False).iloc[0]
             interpretation_card(
                 st,
-                f"Cluster {int(hi.cluster)} has the highest mean demand score ({hi.demand_mean:.1f}) in the current view.",
-                "Integrated profiles combine independent Branch-A structure with observed market descriptors; these are segment characteristics, not treatment effects.",
-                "Use them to create descriptive segment labels only after checking skills, company and geography views for consistency.",
+                _tr(
+                    "page07_integrated.cluster_value0_has_the_highest_mean_demand_e541693",
+                    value0=f"{int(hi.cluster)}",
+                    value1=f"{hi.demand_mean:.1f}",
+                ),
+                _tr(
+                    "page07_integrated.integrated_profiles_combine_independent_branch_a_structure_3a5043d"
+                ),
+                _tr("page07_integrated.use_them_to_create_descriptive_segment_labels_05b34ce"),
                 "info",
             )
 
     with tabs[4]:
-        st.markdown("### Interactive Chart Explorer")
+        st.markdown(_tr("page01_data_basic_clean.interactive_chart_explorer_320e7ef"))
         chart = chart_selector(
             st,
-            "Choose market view",
+            _tr("page07_integrated.choose_market_view_e867087"),
             [
-                "Salary by cluster",
-                "Salary by country",
-                "Salary by job category",
-                "Demand vs salary",
-                "Experience vs salary",
-                "Cluster composition by remote work",
+                _tr("page07_integrated.salary_by_cluster_c89a781"),
+                _tr("page01_data_basic_clean.salary_by_country_8072edc"),
+                _tr("page07_integrated.salary_by_job_category_d159d2e"),
+                _tr("page07_integrated.demand_vs_salary_52a951a"),
+                _tr("page07_integrated.experience_vs_salary_4a979a5"),
+                _tr("page07_integrated.cluster_composition_by_remote_work_4bd46ef"),
             ],
             "p7_chart",
         )
-        if chart == "Salary by cluster":
+        if chart == _src("page07_integrated.salary_by_cluster_c89a781"):
             gg = d.groupby("cluster").annual_salary_usd.mean().reset_index()
             fig = px.bar(
                 gg,
                 x="cluster",
                 y="annual_salary_usd",
                 text="annual_salary_usd",
-                title="Mean Salary by Cluster",
+                title=_src("page07_integrated.mean_salary_by_cluster_d7d584d"),
             )
             fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-        elif chart == "Salary by country":
+        elif chart == _src("page01_data_basic_clean.salary_by_country_8072edc"):
             gg = (
                 d.groupby("country")
                 .agg(salary=("annual_salary_usd", "mean"), records=("annual_salary_usd", "size"))
@@ -288,10 +363,10 @@ def render(st, root, role="admin"):
                 orientation="h",
                 text="salary",
                 hover_data=["records"],
-                title="Mean Salary by Country",
+                title=_src("page01_data_basic_clean.mean_salary_by_country_f4437b2"),
             )
             fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-        elif chart == "Salary by job category":
+        elif chart == _src("page07_integrated.salary_by_job_category_d159d2e"):
             gg = (
                 d.groupby("job_category")
                 .agg(salary=("annual_salary_usd", "mean"), records=("annual_salary_usd", "size"))
@@ -305,28 +380,28 @@ def render(st, root, role="admin"):
                 orientation="h",
                 text="salary",
                 hover_data=["records"],
-                title="Mean Salary by Job Category",
+                title=_src("page07_integrated.mean_salary_by_job_category_641bd86"),
             )
             fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-        elif chart == "Demand vs salary":
+        elif chart == _src("page07_integrated.demand_vs_salary_52a951a"):
             fig = px.scatter(
                 d,
                 x="demand_score",
                 y="annual_salary_usd",
                 color=d.cluster.astype(str),
                 hover_data=["job_title", "job_category", "country"],
-                title="Demand Score vs Salary",
-                labels={"color": "Cluster"},
+                title=_src("page07_integrated.demand_score_vs_salary_328cfeb"),
+                labels={"color": _src("page03_segmentation.cluster_c137a7f")},
             )
-        elif chart == "Experience vs salary":
+        elif chart == _src("page07_integrated.experience_vs_salary_4a979a5"):
             fig = px.scatter(
                 d,
                 x="years_of_experience",
                 y="annual_salary_usd",
                 color=d.cluster.astype(str),
                 hover_data=["job_title", "job_category", "country"],
-                title="Experience vs Salary",
-                labels={"color": "Cluster"},
+                title=_src("page07_integrated.experience_vs_salary_f7454cd"),
+                labels={"color": _src("page03_segmentation.cluster_c137a7f")},
             )
         else:
             gg = d.groupby(["cluster", "remote_work"]).size().rename("records").reset_index()
@@ -337,18 +412,33 @@ def render(st, root, role="admin"):
                 color="remote_work",
                 barmode="stack",
                 text="records",
-                title="Remote-work Mix by Cluster",
+                title=_src("page07_integrated.remote_work_mix_by_cluster_c3d4074"),
             )
         show_plot(st, fig, "p7_explorer")
         interpretation_card(
             st,
-            f"Explorer view '{chart}' uses {len(d):,} filtered records across {d.cluster.nunique()} cluster(s).",
-            "The interactive explorer is designed to test whether a narrative is robust to alternative market views.",
-            "If a conclusion only appears in one chart but disappears under related views or filters, report it as exploratory rather than established.",
+            _tr(
+                "page07_integrated.explorer_view_value0_uses_value1_filtered_records_89880af",
+                value0=f"{chart}",
+                value1=f"{len(d):,}",
+                value2=f"{d.cluster.nunique()}",
+            ),
+            _tr("page07_integrated.the_interactive_explorer_is_designed_to_test_100cc5e"),
+            _tr("page07_integrated.if_a_conclusion_only_appears_in_one_9528a40"),
             "info",
         )
 
     with tabs[5]:
-        downloadable_table(st, seg, "Segment Salary Summary", "p7_seg_table")
-        downloadable_table(st, pred, "Predicted Salary by Segment", "p7_pred_table")
-        downloadable_table(st, geo, "City / Country Segment Summary", "p7_geo_table", height=450)
+        downloadable_table(
+            st, seg, _tr("page07_integrated.segment_salary_summary_686d225"), "p7_seg_table"
+        )
+        downloadable_table(
+            st, pred, _tr("page07_integrated.predicted_salary_by_segment_caeafc0"), "p7_pred_table"
+        )
+        downloadable_table(
+            st,
+            geo,
+            _tr("page07_integrated.city_country_segment_summary_9c2923e"),
+            "p7_geo_table",
+            height=450,
+        )

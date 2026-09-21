@@ -79,3 +79,26 @@ noted above. New code does not overwrite the inherited work.
 
 **Do not describe the application as fully localized.** VI currently translates the shared
 shell and selected common displays, while unmigrated page content remains in English.
+
+## All-page continuation attempt — halted at resource validation
+
+- The user explicitly requested all remaining tasks. Prerequisite checks selected feature
+  009; the requirements checklist passed (14/14). The worktree was clean at commit
+  `c3c7a5a9cbd1689b2c1962a8a771a752f7dd3b73` before this attempt.
+- Added ten candidate acceptance tests for every page's EN/VI title switching, Plotly
+  display-copy localization, and raw-field/value preservation. All ten were RED on the
+  starting implementation, confirming that full-page coverage remains missing.
+- Attempted a catalog extraction/display-boundary migration covering all page modules.
+  The draft identified 1,653 additional resource entries. A development-time translation
+  request was rate-limited (HTTP 429); VI resource validation then failed because the new
+  mapping targets did not all have translations. No runtime translation service was added.
+- Halted the failed increment and restored all application/resource files exactly to the
+  clean starting state. The incomplete migration and candidate tests are saved only in
+  `/tmp/i18n-all-blocked/` for this session; they are not installed application code.
+- Post-rollback regression command:
+  `.venv/bin/pytest -q tests/test_i18n.py tests/test_i18n_ui.py tests/test_model_ui_pages.py tests/test_common_plot.py`
+  returned **42 passed**. No remaining feature task was marked complete.
+- Next step: author and review the complete VI catalog in bounded batches before applying
+  the page migrations. Do not populate missing VI entries with English just to satisfy
+  key parity, or claim full localization from title-only tests. Existing outputs remain
+  read-only; training is unnecessary.

@@ -9,8 +9,11 @@ from typing import Any
 import pandas as pd
 
 from ai_job_market.ui_evidence_io import EvidenceContractError
+from components.presentation import _src, _tr
 
-TABLE_EMPHASIS_LEGEND = "**Bold = governing result** · *Italic = reference/context*"
+TABLE_EMPHASIS_LEGEND = _src(
+    "model_training_presentation.bold_governing_result_italic_reference_context_ea97212"
+)
 
 
 def _sha256_bytes(content: bytes) -> str:
@@ -20,14 +23,14 @@ def _sha256_bytes(content: bytes) -> str:
 def _safe_audit_file(base: Path, relative_path: str) -> Path:
     relative = Path(relative_path)
     if relative.is_absolute() or ".." in relative.parts:
-        raise ValueError("audit path is not safe")
+        raise ValueError(_src("model_training_presentation.audit_path_is_not_safe_25def6f"))
     candidate = base / relative
     if candidate.is_symlink() or base.is_symlink():
-        raise ValueError("audit path is not safe")
+        raise ValueError(_src("model_training_presentation.audit_path_is_not_safe_25def6f"))
     resolved_base = base.resolve(strict=True)
     resolved = candidate.resolve(strict=True)
     if not resolved.is_relative_to(resolved_base):
-        raise ValueError("audit path is not safe")
+        raise ValueError(_src("model_training_presentation.audit_path_is_not_safe_25def6f"))
     return resolved
 
 
@@ -39,21 +42,28 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
     if not raw_path.is_file() or not logs_root.is_dir() or logs_root.is_symlink():
         return {
             "available": False,
-            "reason": "Training audit source or log directory is unavailable.",
+            "reason": _src(
+                "model_training_presentation.training_audit_source_or_log_directory_is_bf4035b"
+            ),
         }
     source_sha256 = _sha256_bytes(raw_path.read_bytes())
     candidates = sorted(logs_root.glob("training-*.logs"), reverse=True)
     if not candidates:
-        return {"available": False, "reason": "No training audit runs are available."}
+        return {
+            "available": False,
+            "reason": _src(
+                "model_training_presentation.no_training_audit_runs_are_available_4b11161"
+            ),
+        }
 
-    last_reason = (
-        "No complete training audit matched the current source data and audit requirements."
+    last_reason = _src(
+        "model_training_presentation.no_complete_training_audit_matched_the_current_16f96cb"
     )
     relevant_kinds = {"fold_membership", "tuning_trials", "model_comparison"}
     for log_path in candidates:
         try:
             if log_path.is_symlink() or not log_path.is_file():
-                raise ValueError("audit path is not safe")
+                raise ValueError(_src("model_training_presentation.audit_path_is_not_safe_25def6f"))
             run_dir = log_path.with_suffix("")
             manifest_path = _safe_audit_file(run_dir, "manifest.json")
             manifest_bytes = manifest_path.read_bytes()
@@ -65,16 +75,26 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
                 and manifest.get("coverage_complete") is True
             )
             if not complete:
-                raise ValueError("training audit is not complete")
+                raise ValueError(
+                    _src("model_training_presentation.training_audit_is_not_complete_7f296af")
+                )
             if manifest.get("source_sha256") != source_sha256:
-                raise ValueError("training audit source fingerprint does not match")
+                raise ValueError(
+                    _src(
+                        "model_training_presentation.training_audit_source_fingerprint_does_not_match_0ce1057"
+                    )
+                )
 
             log_bytes = log_path.read_bytes()
             events = [json.loads(line) for line in log_bytes.splitlines() if line.strip()]
             if not events:
-                raise ValueError("training audit JSONL is empty")
+                raise ValueError(
+                    _src("model_training_presentation.training_audit_jsonl_is_empty_ecce582")
+                )
             if any(not isinstance(event, dict) for event in events):
-                raise ValueError("training audit event must be a JSON object")
+                raise ValueError(
+                    _src("model_training_presentation.training_audit_event_must_be_a_json_43010b2")
+                )
             audit_run_id = str(manifest.get("audit_run_id", ""))
             pipeline_run_id = str(manifest.get("pipeline_run_id", ""))
             if any(
@@ -85,11 +105,15 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
                 )
                 for event in events
             ):
-                raise ValueError("training audit JSONL run identity does not match manifest")
+                raise ValueError(
+                    _src(
+                        "model_training_presentation.training_audit_jsonl_run_identity_does_not_5a6692a"
+                    )
+                )
 
             downloads = [
                 {
-                    "label": "Audit manifest",
+                    "label": _src("model_training_presentation.audit_manifest_13d499c"),
                     "kind": "audit_manifest",
                     "filename": f"training-{pipeline_run_id}-manifest.json",
                     "sha256": _sha256_bytes(manifest_bytes),
@@ -97,7 +121,9 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
                     "mime": "application/json",
                 },
                 {
-                    "label": "Complete structured training log",
+                    "label": _src(
+                        "model_training_presentation.complete_structured_training_log_3a59f7e"
+                    ),
                     "kind": "complete_jsonl",
                     "filename": log_path.name,
                     "sha256": _sha256_bytes(log_bytes),
@@ -111,7 +137,12 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
                 export_path = _safe_audit_file(run_dir, str(entry.get("path", "")))
                 content = export_path.read_bytes()
                 if _sha256_bytes(content) != entry.get("sha256"):
-                    raise ValueError(f"training audit export checksum mismatch: {export_path.name}")
+                    raise ValueError(
+                        _tr(
+                            "model_training_presentation.training_audit_export_checksum_mismatch_value0_95c2d18",
+                            value0=f"{export_path.name}",
+                        )
+                    )
                 downloads.append(
                     {
                         "label": str(entry.get("evidence_id") or export_path.stem),
@@ -193,9 +224,13 @@ def temporal_validation_guide(
     }
     required_membership = {"fold_id", "partition_role", "record_id"}
     if folds.empty or not required_fold <= set(folds):
-        raise ValueError("candidate fold evidence is incomplete")
+        raise ValueError(
+            _src("model_training_presentation.candidate_fold_evidence_is_incomplete_a76324e")
+        )
     if membership.empty or not required_membership <= set(membership):
-        raise ValueError("fold membership evidence is incomplete")
+        raise ValueError(
+            _src("model_training_presentation.fold_membership_evidence_is_incomplete_3c3f05e")
+        )
     definitions = (
         folds[
             [
@@ -222,13 +257,10 @@ def temporal_validation_guide(
         "row_overlap_count": int(overlap_count),
         "folds": definitions.to_dict("records"),
         "method": (
-            "DEV rows are sorted chronologically and split into adjacent row blocks. "
-            "Each fold fits preprocessing and one candidate model on one block, then scores "
-            "the immediately following block."
+            _tr("model_training_presentation.dev_rows_are_sorted_chronologically_and_split_616bd90")
         ),
         "limitations": (
-            "This is not randomized K-fold and not an expanding-window design. Adjacent row "
-            "blocks can share calendar-month labels even though their record identities are disjoint."
+            _tr("model_training_presentation.this_is_not_randomized_k_fold_and_415dfe7")
         ),
     }
 
@@ -257,12 +289,19 @@ def tuning_method_guide(
     ]
     initial = tables.get("manual_tuning_step1_gridsearch", pd.DataFrame())
     if initial.empty or "CV_R2" not in initial:
-        raise ValueError("initial tuning grid evidence is incomplete")
+        raise ValueError(
+            _src("model_training_presentation.initial_tuning_grid_evidence_is_incomplete_b0dbfca")
+        )
     stage_counts: dict[str, int] = {}
     for parameter, stem in stage_columns:
         frame = tables.get(stem, pd.DataFrame())
         if frame.empty or parameter not in frame or "CV_R2" not in frame:
-            raise ValueError(f"tuning stage evidence is incomplete: {parameter}")
+            raise ValueError(
+                _tr(
+                    "model_training_presentation.tuning_stage_evidence_is_incomplete_value0_7143d1e",
+                    value0=f"{parameter}",
+                )
+            )
         stage_counts[parameter] = int(len(frame))
     winner = initial.sort_values("CV_R2", ascending=False, kind="stable").iloc[0]
     compared = ["n_estimators", "max_depth", "min_samples_leaf", "max_features"]
@@ -275,11 +314,13 @@ def tuning_method_guide(
         "stage_trial_counts": stage_counts,
         "total_trial_count": int(len(initial) + sum(stage_counts.values())),
         "effective_folds": int(effective_folds),
-        "ranking_metric": "CV R²",
-        "ranking_direction": "higher is better",
+        "ranking_metric": _src("model_training_presentation.cv_r_c40ab4a"),
+        "ranking_direction": _src("model_training_presentation.higher_is_better_8cde7e0"),
         "saved_matches_initial_winner": saved_matches,
         "applied_parameters": {name: applied_parameters.get(name) for name in compared},
-        "selection_scope": "Inherited non-nested DEV temporal validation; locked test not used.",
+        "selection_scope": _src(
+            "model_training_presentation.inherited_non_nested_dev_temporal_validation_locked_f95dd6a"
+        ),
     }
 
 
@@ -287,22 +328,47 @@ def load_evidence_download(root: Path, manifest: dict[str, Any], stem: str) -> d
     """Return byte-exact content for one validated active evidence file."""
     matches = [entry for entry in manifest["files"] if Path(entry["path"]).stem == stem]
     if len(matches) != 1:
-        raise EvidenceContractError(f"evidence file is unavailable or ambiguous: {stem}")
+        raise EvidenceContractError(
+            _tr(
+                "model_training_presentation.evidence_file_is_unavailable_or_ambiguous_value0_acb1c2b",
+                value0=f"{stem}",
+            )
+        )
     entry = matches[0]
     workspace = root.resolve()
     path = root / entry["path"]
     if path.is_symlink():
-        raise EvidenceContractError(f"evidence download path is unsafe: {entry['path']}")
+        raise EvidenceContractError(
+            _tr(
+                "model_training_presentation.evidence_download_path_is_unsafe_value0_e898b48",
+                value0=f"{entry['path']}",
+            )
+        )
     try:
         resolved = path.resolve(strict=True)
     except OSError as exc:
-        raise EvidenceContractError(f"evidence download is unavailable: {entry['path']}") from exc
+        raise EvidenceContractError(
+            _tr(
+                "model_training_presentation.evidence_download_is_unavailable_value0_1adff10",
+                value0=f"{entry['path']}",
+            )
+        ) from exc
     if not resolved.is_relative_to(workspace):
-        raise EvidenceContractError(f"evidence download path escapes workspace: {entry['path']}")
+        raise EvidenceContractError(
+            _tr(
+                "model_training_presentation.evidence_download_path_escapes_workspace_value0_603021a",
+                value0=f"{entry['path']}",
+            )
+        )
     content = resolved.read_bytes()
     actual_sha256 = _sha256_bytes(content)
     if actual_sha256 != entry["sha256"]:
-        raise EvidenceContractError(f"evidence download checksum mismatch: {entry['path']}")
+        raise EvidenceContractError(
+            _tr(
+                "model_training_presentation.evidence_download_checksum_mismatch_value0_fc10977",
+                value0=f"{entry['path']}",
+            )
+        )
     return {
         "path": entry["path"],
         "filename": resolved.name,
@@ -322,7 +388,7 @@ def _markdown_emphasis(value: str, emphasis: str | None) -> str:
 
 def _display_parameter(value: Any) -> str:
     if value is None or pd.isna(value):
-        return "None"
+        return _src("model_training_presentation.none_dc937b5")
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value)
@@ -339,12 +405,12 @@ def candidate_decision_table(summary: pd.DataFrame) -> pd.DataFrame:
     if summary.empty or not required <= set(summary):
         return pd.DataFrame(
             columns=[
-                "Rank",
-                "Model",
-                "Decision role",
-                "Mean validation MAE",
-                "Mean train MAE",
-                "Validation R²",
+                _src("model_training_presentation.rank_a4130d7"),
+                _src("model_training_presentation.model_5e2c614"),
+                _src("model_training_presentation.decision_role_b8dd1f9"),
+                _src("model_training_presentation.mean_validation_mae_6a465d9"),
+                _src("model_training_presentation.mean_train_mae_58f5297"),
+                _src("model_evidence.validation_r_538b15c"),
             ]
         )
     table = summary.copy()
@@ -352,26 +418,38 @@ def candidate_decision_table(summary: pd.DataFrame) -> pd.DataFrame:
     table = table.dropna(subset=["validation_MAE_mean"]).sort_values(
         ["validation_MAE_mean", "model"], kind="stable"
     )
-    table["Rank"] = table["validation_MAE_mean"].rank(method="min").astype(int)
+    table[_src("model_training_presentation.rank_a4130d7")] = (
+        table["validation_MAE_mean"].rank(method="min").astype(int)
+    )
     best = float(table["validation_MAE_mean"].min())
     rows: list[dict[str, Any]] = []
     for _, row in table.iterrows():
         is_winner = math.isclose(float(row.validation_MAE_mean), best, rel_tol=0.0, abs_tol=0.0)
-        is_reference = row.model == "Dummy Median"
+        is_reference = row.model == _src("model_evidence.dummy_median_accc4f4")
         emphasis = "bold" if is_winner else "italic" if is_reference else None
-        role = "Winner" if is_winner else "Reference baseline" if is_reference else "Candidate"
+        role = (
+            _src("model_training_presentation.winner_105dc74")
+            if is_winner
+            else _src("model_evidence.reference_baseline_58e7d63")
+            if is_reference
+            else _src("model_training_presentation.candidate_b2452d1")
+        )
         rows.append(
             {
-                "Rank": int(row.Rank),
-                "Model": _markdown_emphasis(str(row.model), emphasis),
-                "Decision role": _markdown_emphasis(role, emphasis),
-                "Mean validation MAE": _markdown_emphasis(
+                _src("model_training_presentation.rank_a4130d7"): int(row.Rank),
+                _src("model_training_presentation.model_5e2c614"): _markdown_emphasis(
+                    str(row.model), emphasis
+                ),
+                _src("model_training_presentation.decision_role_b8dd1f9"): _markdown_emphasis(
+                    role, emphasis
+                ),
+                _src("model_training_presentation.mean_validation_mae_6a465d9"): _markdown_emphasis(
                     f"${float(row.validation_MAE_mean):,.0f}", emphasis
                 ),
-                "Mean train MAE": _markdown_emphasis(
+                _src("model_training_presentation.mean_train_mae_58f5297"): _markdown_emphasis(
                     f"${float(row.train_MAE_mean):,.0f}", emphasis
                 ),
-                "Validation R²": _markdown_emphasis(
+                _src("model_evidence.validation_r_538b15c"): _markdown_emphasis(
                     f"{float(row.validation_R2_mean):.3f}", emphasis
                 ),
             }
@@ -393,13 +471,13 @@ def tuning_decision_table(
     if summary.empty or not required <= set(summary):
         return pd.DataFrame(
             columns=[
-                "Hyperparameter",
-                "Search space",
-                "Stage winner",
-                "Applied value",
-                "Relationship",
-                "Best CV R²",
-                "Best CV MAE",
+                _src("model_training_presentation.hyperparameter_5bc576c"),
+                _src("model_training_presentation.search_space_ec5ba5c"),
+                _src("model_training_presentation.stage_winner_6d40f65"),
+                _src("model_training_presentation.applied_value_f7d2bbd"),
+                _src("model_training_presentation.relationship_25490a1"),
+                _src("model_training_presentation.best_cv_r_2dc7204"),
+                _src("model_training_presentation.best_cv_mae_236adf4"),
             ]
         )
     rows: list[dict[str, Any]] = []
@@ -410,15 +488,25 @@ def tuning_decision_table(
         matches = _parameter_values_match(winner, applied)
         rows.append(
             {
-                "Hyperparameter": parameter,
-                "Search space": f"*{row.search_space}*",
-                "Stage winner": _markdown_emphasis(_display_parameter(winner), "bold"),
-                "Applied value": _markdown_emphasis(_display_parameter(applied), "bold"),
-                "Relationship": (
-                    "**Applied = stage winner**" if matches else "*Sensitivity only; not applied*"
+                _src("model_training_presentation.hyperparameter_5bc576c"): parameter,
+                _src("model_training_presentation.search_space_ec5ba5c"): f"*{row.search_space}*",
+                _src("model_training_presentation.stage_winner_6d40f65"): _markdown_emphasis(
+                    _display_parameter(winner), "bold"
                 ),
-                "Best CV R²": _markdown_emphasis(f"{float(row.best_cv_r2):.3f}", "bold"),
-                "Best CV MAE": _markdown_emphasis(f"${float(row.best_cv_mae):,.0f}", "bold"),
+                _src("model_training_presentation.applied_value_f7d2bbd"): _markdown_emphasis(
+                    _display_parameter(applied), "bold"
+                ),
+                _src("model_training_presentation.relationship_25490a1"): (
+                    _src("model_training_presentation.applied_stage_winner_203b9a2")
+                    if matches
+                    else _src("model_training_presentation.sensitivity_only_not_applied_cce45a7")
+                ),
+                _src("model_training_presentation.best_cv_r_2dc7204"): _markdown_emphasis(
+                    f"{float(row.best_cv_r2):.3f}", "bold"
+                ),
+                _src("model_training_presentation.best_cv_mae_236adf4"): _markdown_emphasis(
+                    f"${float(row.best_cv_mae):,.0f}", "bold"
+                ),
             }
         )
     return pd.DataFrame(rows)
