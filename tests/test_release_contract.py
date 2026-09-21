@@ -204,7 +204,9 @@ def test_streamlit_has_global_upload_full_process_and_commentary_every_page():
     data_source = (ROOT / "src/components/data_source.py").read_text(encoding="utf-8")
     assert "file_uploader(" in data_source
     assert "validate_input_schema" in data_source
-    assert "Process full pipeline on this dataset" in data_source
+    assert 't("source.process")' in data_source
+    resources = json.loads((ROOT / "config/language/en.json").read_text(encoding="utf-8"))
+    assert resources["translations"]["source.process"] == "Process full pipeline on this dataset"
     assert "run_pipeline(" in data_source
     assert 'disabled=not report["valid"]' in data_source
     evidence_pages = {

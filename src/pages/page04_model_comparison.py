@@ -27,10 +27,7 @@ from .model_training_presentation import (
     load_evidence_download,
     temporal_validation_guide,
 )
-from .training_validation_presentation import (
-    render_historical_training_report,
-    render_page04_training_validation,
-)
+from .training_validation_presentation import render_training_log_footer
 
 
 def _metrics(st, values):
@@ -75,7 +72,6 @@ def render(st, root, role="admin"):
     style_page(st)
     st.title("4. Model comparison and temporal validation")
     st.caption("Frozen candidates · identical chronological DEV folds · lower MAE is better")
-    render_page04_training_validation(st, root)
     try:
         manifest, tables = load_evidence(root)
         summary = tables["candidate_summary"]
@@ -85,10 +81,12 @@ def render(st, root, role="admin"):
         st.code(
             f'PYTHONPATH=src .venv/bin/python -m ai_job_market.ui_evidence --workspace "{root}"'
         )
+        render_training_log_footer(
+            st, load_compatible_training_audit(root), page="page04"
+        )
         return
 
     audit = load_compatible_training_audit(root)
-    render_historical_training_report(st, manifest, tables, audit, page="page04")
 
     ranked = summary.sort_values("validation_MAE_mean").reset_index(drop=True)
     winner = ranked.iloc[0]
@@ -491,3 +489,5 @@ def render(st, root, role="admin"):
         st.warning(
             "A large train–validation gap is descriptive evidence. It does not by itself prove matrix singularity, memorization, or a universal overfit diagnosis."
         )
+
+    render_training_log_footer(st, audit, page="page04")

@@ -95,6 +95,15 @@
 - [X] T047 Update `docs/MODEL_UI.md`, README and feature verification with the common-foundation/Branch A → Branch B sequence, historical/exposed evidence label, 5W1H semantics, log provenance, no cluster-feature claim, and no-retraining reuse decision.
 - [X] T048 Run focused/full pytest, Ruff, `git diff --check`, protected-hash comparison and Graphify refresh; record browser/two-reader acceptance as pending unless actually completed.
 
+## Phase 10 — Simplify Page 04/05 evidence UI and move logs to the footer
+
+- [X] T049 Record explicit user approval to remove visible 5W1H and direct training-validation panels while retaining their evidence contracts and artifacts.
+- [X] T050 Remove 5W1H narratives/downloads and the `Training & validation evidence` / `Latest training validation` presentation paths from Pages 04–05.
+- [X] T051 Move the historical audit preview/downloads to the bottom of each page and sort the preview by Operation, lifecycle Status (Started before Completed), then Model.
+- [X] T052 Replace technical compatibility wording in active user-facing states with descriptions of source-data, format and audit-check matching.
+- [X] T053 Update focused pure/AppTest coverage and user-facing UI documentation for the deprecated panels and footer behavior.
+- [X] T054 Run final focused tests, Ruff and `git diff --check` after implementation.
+
 ## Dependencies and execution order
 
 - T001–T003 precede all implementation.

@@ -9,13 +9,10 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from ai_job_market.training_evidence_io import required_evidence_files, sha256_file
-from pages.model_evidence import load_evidence
-from pages.model_training_presentation import load_compatible_training_audit
 from pages.training_validation_presentation import (
-    build_historical_candidate_5w1h,
-    build_historical_final_5w1h,
     discover_latest_training_validation,
     load_training_validation_view,
+    sort_training_events,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -213,7 +210,39 @@ def build_complete_pack(
     (run_dir / "family_selection.json").write_text(json.dumps({"lowest_mae_model": "Gradient Boosting", "selected_family": "Linear Regression", "overlap_models": ["Linear Regression", "Gradient Boosting"], "selection_method": "overlap_simplicity"}), encoding="utf-8")
 
     tuning_rows = [
-        {"search_id": f"rf-{context}", "stage": "initial-grid", "slot": 1, "trial_ordinal": 1, "trial_id": f"rf-{context}:trial-1", "configuration_id": "rf-cfg", "params": "{n_estimators: 50}", "seed": 42, "fold_ids": "inner-1|inner-2|inner-3", "fold_count": 3, "mae_mean": 17000, "mae_sd": 500, "status": "completed", "reused_from": None}
+        {
+            "search_id": f"rf-{context}",
+            "method_version": "gridsearchcv-temporal/v1",
+            "stage": "grid-search",
+            "slot": 1,
+            "trial_ordinal": 1,
+            "trial_id": f"rf-{context}:candidate-1",
+            "configuration_id": "rf-cfg",
+            "params": "{n_estimators: 50, max_depth: 10}",
+            "n_estimators": 50,
+            "max_depth": 10,
+            "min_samples_leaf": 2,
+            "max_features": 0.8,
+            "seed": 42,
+            "fold_ids": "inner-1|inner-2|inner-3",
+            "inner_fold_ids": "inner-1|inner-2|inner-3",
+            "fold_count": 3,
+            "fold_mae": "[16500, 17000, 17500]",
+            "fold_r2": "[0.4, 0.5, 0.6]",
+            "mae_mean": 17000,
+            "mae_sd": 500,
+            "r2_mean": 0.5,
+            "r2_sd": 0.1,
+            "mean_fit_time_s": 0.1,
+            "std_fit_time_s": 0.01,
+            "ranking_metric": "MAE",
+            "ranking_direction": "lower",
+            "scoring": "neg_mean_absolute_error",
+            "rank": 1,
+            "status": "completed",
+            "failure_reason": None,
+            "evidence_ref": f"tuning_trials.csv#trial_id=rf-{context}:candidate-1",
+        }
         for context in ["outer-1", "outer-2", "outer-3", "outer-4", "outer-5", "final-train"]
     ]
     _write_csv(run_dir / "tuning_trials.csv", tuning_rows)
@@ -259,6 +288,7 @@ def build_complete_pack(
         files.append({"path": f"outputs/training_validation/{run_id}/{relative}", "sha256": sha256_file(path), "size": path.stat().st_size})
     manifest = {
         "schema_version": "training-validation/v1",
+        "training_method_version": "gridsearchcv-temporal/v1",
         "run_id": run_id,
         "execution_status": "complete",
         "generated_at": generated_at,
@@ -271,58 +301,24 @@ def build_complete_pack(
     return run_dir
 
 
-def test_historical_candidate_5w1h_has_five_source_bound_records() -> None:
-    manifest, tables = load_evidence(ROOT)
-    audit = load_compatible_training_audit(ROOT)
-
-    records = build_historical_candidate_5w1h(manifest, tables, audit)
-
-    assert [record["model_role_id"] for record in records] == [
-        "Random Forest",
-        "Gradient Boosting",
-        "Ridge Regression",
-        "Dummy Median",
-        "Linear Regression",
-    ]
-    assert len(records) == 5
-    expected = tables["candidate_summary"].set_index("model")
-    for record in records:
-        assert all(record[field] for field in ("who", "what", "when", "where", "why", "how"))
-        assert record["result"]["validation_mae_usd"] == expected.loc[
-            record["model_role_id"], "validation_MAE_mean"
+def test_training_events_sort_by_operation_status_then_model() -> None:
+    events = pd.DataFrame(
+        [
+            {"operation": "tune", "status": "completed", "model": "B", "sequence": 4},
+            {"operation": "score", "status": "completed", "model": "A", "sequence": 2},
+            {"operation": "tune", "status": "started", "model": "B", "sequence": 3},
+            {"operation": "tune", "status": "started", "model": "A", "sequence": 1},
         ]
-        assert record["result"]["folds"] == 5
-        assert record["limitation"]
-        assert record["next_action"]
-        assert record["evidence_refs"]
-        combined = " ".join(str(value) for value in record.values()).lower()
-        assert "pristine" not in combined
-        assert "near-singular" not in combined
-        assert "memorization" not in combined
+    )
 
+    result = sort_training_events(events)
 
-def test_historical_final_5w1h_has_selected_full_and_top2_records() -> None:
-    manifest, tables = load_evidence(ROOT)
-    audit = load_compatible_training_audit(ROOT)
-
-    records = build_historical_final_5w1h(manifest, tables, audit)
-
-    assert [record["model_role_id"] for record in records] == [
-        "Random Forest (selected family)",
-        "Full 13",
-        "Top 2",
+    assert list(zip(result["operation"], result["status"], result["model"])) == [
+        ("score", "completed", "A"),
+        ("tune", "started", "A"),
+        ("tune", "started", "B"),
+        ("tune", "completed", "B"),
     ]
-    for record in records:
-        assert all(record[field] for field in ("who", "what", "when", "where", "why", "how"))
-        assert "historically exposed" in record["limitation"].lower()
-        assert record["evidence_refs"]
-    full = records[1]
-    historical_full = tables["variant_metrics"].query(
-        "feature_variant == 'full' and evaluation == 'historical_test'"
-    ).iloc[0]
-    assert full["result"]["historical_test_mae_usd"] == historical_full["MAE"]
-    assert full["result"]["q90_abs_error_usd"] == historical_full["q90_abs_error_usd"]
-    assert records[2]["what"].startswith("Fixed Top-2 feature variant")
 
 
 def test_discovery_reports_missing_and_ignores_staging_and_ledger(tmp_path: Path) -> None:
@@ -355,6 +351,21 @@ def test_discovery_selects_latest_valid_utc_pack_and_breaks_ties_by_run_id(tmp_p
         manifest_path.write_text(json.dumps(manifest))
     selected = discover_latest_training_validation(tmp_path)
     assert selected["run_id"] == second
+
+
+def test_discovery_invalidates_old_manual_search_pack(tmp_path: Path) -> None:
+    run_id = "tv-" + "9" * 32
+    run_dir = build_complete_pack(tmp_path, run_id=run_id)
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["training_method_version"] = "manual-stepwise/v1"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = discover_latest_training_validation(tmp_path)
+
+    assert result["available"] is False
+    assert result["reason_code"] == "NO_VALID_PACK"
+    assert result["invalid_candidate_count"] == 1
 
 
 def test_newer_corrupt_pack_does_not_hide_older_valid_pack(tmp_path: Path) -> None:
@@ -476,92 +487,20 @@ def test_view_accepts_explicitly_skipped_tuning_contexts(tmp_path: Path) -> None
     assert set(contexts["reason"]) == {"selected_family_is_not_random_forest"}
 
 
-@pytest.mark.parametrize(
-    ("module_name", "title", "expander_label", "expected_downloads"),
-    [
-        (
-            "page04_model_comparison",
-            "4. Model comparison and temporal validation",
-            "Latest training validation: folds and candidate models",
-            {"training.log", "events.jsonl", "training-validation-transcript.csv"},
-        ),
-        (
-            "page05_best_model",
-            "5. Best model, diagnostics and uncertainty",
-            "Latest training validation: tuning and Full/Top-2 variants",
-            {
-                "report.md",
-                "agent_summary.json",
-                "model_conclusions.json",
-                "training-validation-transcript.csv",
-            },
-        ),
-    ],
-)
-def test_real_page_renderers_show_valid_pack_without_model_operations(
-    tmp_path: Path,
-    monkeypatch,
-    module_name: str,
-    title: str,
-    expander_label: str,
-    expected_downloads: set[str],
-) -> None:
+def test_deprecated_pack_panels_are_not_rendered_by_pages(tmp_path: Path) -> None:
     build_complete_pack(tmp_path, run_id="tv-" + "9" * 32)
-
-    def forbidden(*_args, **_kwargs):
-        raise AssertionError("model/training operation reached by read-only UI")
-
-    monkeypatch.setattr("joblib.load", forbidden)
-    monkeypatch.setattr("ai_job_market.training_validation.fit_final_variants", forbidden)
-    monkeypatch.setattr("ai_job_market.training_validation.score_frozen_pipelines", forbidden)
-    monkeypatch.setattr("ai_job_market.training_validation.publish_staged_pack", forbidden)
-    monkeypatch.setattr("ai_job_market.training_validation.run_workspace", forbidden)
-    monkeypatch.setattr("ai_job_market.training_validation.benchmark_fitted_contexts", forbidden)
-    monkeypatch.setattr("ai_job_market.training_validation.compare_training_partition", forbidden)
-    before = {
-        path.relative_to(tmp_path): sha256_file(path)
-        for path in tmp_path.rglob("*")
-        if path.is_file()
-    }
     script = (
         "from pathlib import Path\n"
         "import streamlit as st\n"
-        f"from pages import {module_name} as page\n"
+        "from pages import page04_model_comparison as page\n"
         f"page.render(st, Path({str(tmp_path)!r}), 'admin')\n"
     )
+
     app = AppTest.from_string(script, default_timeout=30).run()
+
     assert not app.exception
-    after = {
-        path.relative_to(tmp_path): sha256_file(path)
-        for path in tmp_path.rglob("*")
-        if path.is_file()
-    }
-    assert after == before
-    assert any(item.value == title for item in app.title)
-    assert any(item.value == "Training & validation evidence" for item in app.subheader)
-    assert any("Verified offline training evidence" in item.value for item in app.success)
-    metric_labels = {item.label for item in app.metric}
-    if module_name.startswith("page04"):
-        assert {"Outer folds", "Inner folds", "Candidates"} <= metric_labels
-    else:
-        assert {"Tuning contexts", "Variant folds", "Holdout roles"} <= metric_labels
-    expander_labels = [item.label for item in app.expander]
-    assert expander_label in expander_labels
-    if module_name.startswith("page05"):
-        assert "Latest training validation: holdout, explainability and uncertainty" in expander_labels
-    assert any("Validated immutable offline evidence pack" in item.value for item in app.success)
-    download_labels = {button.label for button in app.get("download_button")}
-    assert all(
-        any(filename in label for label in download_labels)
-        for filename in expected_downloads
-    )
-    assert any(
-        {"fold_id", "train_rows", "validation_rows"} <= set(item.value.columns)
-        for item in app.dataframe
-    ) if module_name.startswith("page04") else any(
-        {"model_role_id", "partition", "MAE"} <= set(item.value.columns)
-        for item in app.dataframe
-    )
+    assert "Training & validation evidence" not in [item.value for item in app.subheader]
+    assert not any("Latest training validation:" in item.label for item in app.expander)
 
 
 def test_optional_sections_remain_local_when_values_are_unavailable(tmp_path: Path) -> None:
@@ -627,7 +566,6 @@ def test_training_and_supplemental_sources_cover_remaining_state_matrix(
     )
     available = AppTest.from_string(available_script, default_timeout=30).run()
     assert not available.exception
-    assert available.success
     assert not any(supplemental_error in item.value for item in available.error)
     assert available.get("plotly_chart")
 
@@ -641,7 +579,7 @@ def test_training_and_supplemental_sources_cover_remaining_state_matrix(
     )
     missing = AppTest.from_string(missing_script, default_timeout=30).run()
     assert not missing.exception
-    assert any(item.value == "Training validation unavailable" for item in missing.info)
+    assert any("Historical training audit unavailable" in item.value for item in missing.info)
     assert any(supplemental_error in item.value for item in missing.error)
 
 

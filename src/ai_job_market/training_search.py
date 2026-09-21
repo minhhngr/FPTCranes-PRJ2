@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -12,10 +11,10 @@ import numpy as np
 import pandas as pd
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import GridSearchCV
 
 from .core import TARGET, candidate_models, make_model_pipeline
-
-EvaluateTrial = Callable[[dict[str, Any], list[str]], list[float]]
+from .training_partitions import FoldDeclaration, temporal_fold_splitter
 
 
 @dataclass
@@ -36,159 +35,150 @@ class SearchResult:
     actual_fit_count: int
 
 
-def _config_key(params: dict[str, Any]) -> str:
-    return hashlib.sha256(
-        json.dumps(params, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-
-
-def _rank_key(row: dict[str, Any]) -> tuple[Any, ...]:
-    params = row["params"]
-    depth = params["max_depth"]
+def _grid(policy: dict[str, Any]) -> tuple[dict[str, list[Any]], dict[str, Any]]:
+    required = {"n_estimators", "max_depth", "min_samples_leaf", "max_features"}
+    if required - set(policy):
+        raise ValueError("GridSearchCV policy is missing required Random Forest parameters")
+    n_estimators = [int(value) for value in policy["n_estimators"]]
+    max_depth = [None if value is None else int(value) for value in policy["max_depth"]]
+    if not n_estimators or not max_depth or any(value < 1 for value in n_estimators):
+        raise ValueError("GridSearchCV parameter grid is invalid")
     return (
-        row["mae_mean"],
-        params["n_estimators"],
-        float("inf") if depth is None else depth,
-        -params["min_samples_leaf"],
-        params["max_features"],
-        row["trial_ordinal"],
+        {"model__n_estimators": n_estimators, "model__max_depth": max_depth},
+        {
+            "min_samples_leaf": int(policy["min_samples_leaf"]),
+            "max_features": float(policy["max_features"]),
+        },
     )
 
 
-def stepwise_rf_search(
+def gridsearch_rf_search(
     *,
     search_id: str,
-    fold_ids: list[str],
+    frame: pd.DataFrame,
+    membership: pd.DataFrame,
+    features: list[str],
+    folds: list[FoldDeclaration],
     policy: dict[str, Any],
-    evaluate: EvaluateTrial,
     seed: int,
+    on_step: Callable[[dict[str, Any]], None] | None = None,
 ) -> SearchResult:
-    if len(fold_ids) != 3 or len(set(fold_ids)) != 3:
-        raise ValueError("Random Forest search requires exactly three distinct inner folds")
-    stage_definitions = [
-        ("initial-grid", None, policy["anchors"]),
-        ("n-estimators", "n_estimators", policy["n_estimators"]),
-        ("max-depth", "max_depth", policy["max_depth"]),
-        ("min-samples-leaf", "min_samples_leaf", policy["min_samples_leaf"]),
-        ("max-features", "max_features", policy["max_features"]),
-    ]
-    cache: dict[str, tuple[list[float], str]] = {}
+    """Tune only Random Forest hyperparameters on declared temporal inner folds."""
+    splitter, positions = temporal_fold_splitter(membership, folds)
+    param_grid, fixed = _grid(policy)
+    pipeline = make_model_pipeline(
+        RandomForestRegressor(random_state=seed, n_jobs=1, **fixed), features
+    )
+    search = GridSearchCV(
+        pipeline,
+        param_grid=param_grid,
+        scoring={"neg_mae": "neg_mean_absolute_error", "r2": "r2"},
+        refit=False,
+        cv=splitter,
+        n_jobs=1,
+        error_score=np.nan,
+        return_train_score=False,
+    )
+    search.fit(frame.iloc[positions][features], frame.iloc[positions][TARGET])
+    results = search.cv_results_
     rows: list[dict[str, Any]] = []
-    incumbent: dict[str, Any] | None = None
-    ordinal = 0
-    actual_fit_count = 0
-    for stage, parameter, values in stage_definitions:
-        stage_rows: list[dict[str, Any]] = []
-        for slot, value in enumerate(values, start=1):
-            ordinal += 1
-            if parameter is None:
-                params = dict(value)
-            else:
-                if incumbent is None:
-                    raise ValueError("search incumbent is unavailable")
-                params = incumbent | {parameter: value}
-            params["n_estimators"] = int(params["n_estimators"])
-            params["min_samples_leaf"] = int(params["min_samples_leaf"])
-            params["max_features"] = float(params["max_features"])
-            if params["max_depth"] is not None:
-                params["max_depth"] = int(params["max_depth"])
-            key = _config_key(params)
-            reused_from = None
-            search_wall_start = time.perf_counter()
-            search_cpu_start = time.process_time()
-            if key in cache:
-                scores, reused_from = cache[key]
-                status = "reused"
-            else:
-                scores = [float(score) for score in evaluate(params.copy(), list(fold_ids))]
-                if len(scores) != len(fold_ids) or not np.isfinite(scores).all():
-                    raise ValueError("tuning trial must return one finite MAE per inner fold")
-                cache[key] = (scores, f"{search_id}:trial-{ordinal}")
-                status = "completed"
-                actual_fit_count += len(fold_ids)
-            row = {
-                "search_id": search_id,
-                "stage": stage,
-                "slot": slot,
-                "trial_ordinal": ordinal,
-                "trial_id": f"{search_id}:trial-{ordinal}",
-                "configuration_id": key,
-                "params": params,
-                "seed": seed,
-                "fold_ids": list(fold_ids),
-                "fold_count": len(fold_ids),
-                "fold_mae": list(scores),
-                "mae_mean": float(np.mean(scores)),
-                "mae_sd": float(np.std(scores, ddof=0)),
-                "ranking_metric": "MAE",
-                "ranking_direction": "lower",
-                "status": status,
-                "reused_from": reused_from,
-                "search_wall_s": time.perf_counter() - search_wall_start,
-                "search_cpu_s": time.process_time() - search_cpu_start,
-            }
-            rows.append(row)
-            stage_rows.append(row)
-        incumbent = dict(min(stage_rows, key=_rank_key)["params"])
+    for ordinal in range(len(results["params"])):
+        params = results["params"][ordinal]
+        mae = -float(results["mean_test_neg_mae"][ordinal])
+        mae_sd = float(results["std_test_neg_mae"][ordinal])
+        raw_r2 = float(results["mean_test_r2"][ordinal])
+        raw_r2_sd = float(results["std_test_r2"][ordinal])
+        r2 = raw_r2 if np.isfinite(raw_r2) else None
+        r2_sd = raw_r2_sd if np.isfinite(raw_r2_sd) else None
+        fold_mae = [
+            -float(results[f"split{index}_test_neg_mae"][ordinal]) for index in range(len(folds))
+        ]
+        fold_r2 = [
+            value if np.isfinite(value) else None
+            for index in range(len(folds))
+            for value in [float(results[f"split{index}_test_r2"][ordinal])]
+        ]
+        status = "completed" if np.isfinite(mae) else "failed"
+        full_params = {
+            "n_estimators": int(params["model__n_estimators"]),
+            "max_depth": params["model__max_depth"],
+            **fixed,
+        }
+        row = {
+            "search_id": search_id,
+            "method_version": "gridsearchcv-temporal/v1",
+            "stage": "grid-search",
+            "slot": ordinal + 1,
+            "trial_ordinal": ordinal + 1,
+            "trial_id": f"{search_id}:candidate-{ordinal + 1}",
+            "configuration_id": hashlib.sha256(
+                json.dumps(full_params, sort_keys=True).encode()
+            ).hexdigest(),
+            "params": full_params,
+            "n_estimators": full_params["n_estimators"],
+            "max_depth": full_params["max_depth"],
+            "min_samples_leaf": fixed["min_samples_leaf"],
+            "max_features": fixed["max_features"],
+            "seed": seed,
+            "fold_ids": [fold.fold_id for fold in folds],
+            "inner_fold_ids": [fold.fold_id for fold in folds],
+            "fold_count": len(folds),
+            "fold_mae": fold_mae,
+            "fold_r2": fold_r2,
+            "mae_mean": mae,
+            "mae_sd": mae_sd,
+            "r2_mean": r2,
+            "r2_sd": r2_sd,
+            "r2_reason": None if r2 is not None else "nonfinite_gridsearch_r2",
+            "mean_fit_time_s": float(results["mean_fit_time"][ordinal]),
+            "std_fit_time_s": float(results["std_fit_time"][ordinal]),
+            "ranking_metric": "MAE",
+            "ranking_direction": "lower",
+            "scoring": "neg_mean_absolute_error",
+            "rank": int(results["rank_test_neg_mae"][ordinal]),
+            "status": status,
+            "failure_reason": None if status == "completed" else "nonfinite_gridsearch_score",
+            "evidence_ref": f"tuning_trials.csv#trial_id={search_id}:candidate-{ordinal + 1}",
+        }
+        rows.append(row)
+        if on_step is not None:
+            on_step(row)
+    trials = pd.DataFrame(rows)
+    valid = trials[trials["status"] == "completed"].sort_values(["rank", "trial_ordinal"])
+    if valid.empty:
+        return SearchResult(
+            search_id,
+            "failed",
+            "all_gridsearch_candidates_failed",
+            None,
+            trials,
+            len(trials) * len(folds),
+        )
     return SearchResult(
-        search_id=search_id,
-        status="completed",
-        reason=None,
-        winner=incumbent,
-        trials=pd.DataFrame(rows),
-        actual_fit_count=actual_fit_count,
+        search_id,
+        "completed",
+        None,
+        dict(valid.iloc[0]["params"]),
+        trials,
+        len(trials) * len(folds),
     )
 
 
-def conditional_stepwise_rf_search(
+def conditional_gridsearch_rf_search(
     *,
     selected_family: str,
-    search_id: str,
-    fold_ids: list[str],
-    policy: dict[str, Any],
-    evaluate: EvaluateTrial,
-    seed: int,
+    **kwargs: Any,
 ) -> SearchResult:
     if selected_family != "Random Forest":
         return SearchResult(
-            search_id=search_id,
-            status="skipped",
-            reason="selected_family_is_not_random_forest",
-            winner=None,
-            trials=pd.DataFrame(),
-            actual_fit_count=0,
+            kwargs["search_id"],
+            "skipped",
+            "selected_family_is_not_random_forest",
+            None,
+            pd.DataFrame(),
+            0,
         )
-    return stepwise_rf_search(
-        search_id=search_id,
-        fold_ids=fold_ids,
-        policy=policy,
-        evaluate=evaluate,
-        seed=seed,
-    )
-
-
-def run_declared_rf_searches(
-    *,
-    selected_family: str,
-    contexts: dict[str, list[str]],
-    policy: dict[str, Any],
-    evaluator_factory: Callable[[str], EvaluateTrial],
-    seed: int,
-) -> dict[str, SearchResult]:
-    expected = {f"outer-{index}" for index in range(1, 6)} | {"final-train"}
-    if set(contexts) != expected:
-        raise ValueError("nested tuning requires five outer contexts and one final TRAIN context")
-    return {
-        context_id: conditional_stepwise_rf_search(
-            selected_family=selected_family,
-            search_id=f"rf-{context_id}",
-            fold_ids=fold_ids,
-            policy=policy,
-            evaluate=evaluator_factory(context_id),
-            seed=seed,
-        )
-        for context_id, fold_ids in contexts.items()
-    }
+    return gridsearch_rf_search(**kwargs)
 
 
 def fit_final_variants(

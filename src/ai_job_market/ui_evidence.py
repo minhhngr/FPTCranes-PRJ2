@@ -55,6 +55,22 @@ def _required(workspace: Path, relative: str) -> Path:
     return path
 
 
+def _period_span(frame: pd.DataFrame, positions: np.ndarray) -> str:
+    """Return the inclusive month span for one declared temporal fold side."""
+    subset = frame.iloc[positions]
+    if subset.empty:
+        raise EvidenceContractError("temporal fold side is empty")
+    periods = sorted(
+        {
+            f"{int(year):04d}-{int(month):02d}"
+            for year, month in zip(
+                subset["posting_year"], subset["posting_month"], strict=True
+            )
+        }
+    )
+    return periods[0] if len(periods) == 1 else f"{periods[0]}..{periods[-1]}"
+
+
 def _source_paths(workspace: Path) -> dict[str, Path]:
     return {
         "development": _required(workspace, "outputs/02_data_ready_for_ml/development_raw.csv"),
@@ -290,6 +306,11 @@ def generate(workspace: Path | str) -> dict[str, Any]:
     candidate_fold, candidate_summary, rf_importance = evaluate_frozen_models(
         dev, MODEL_FEATURES, candidate_models(seed), splits, capture_importance=True
     )
+    train_period_by_fold = {
+        fold_id: _period_span(dev, train_offsets)
+        for fold_id, (train_offsets, _, _) in enumerate(splits, 1)
+    }
+    candidate_fold["train_period"] = candidate_fold["fold_id"].map(train_period_by_fold)
     candidate_test, _ = evaluate_test_models(dev, test, MODEL_FEATURES, candidate_models(seed))
 
     variant_models = {"Full 13": full_estimator, "Top 2": clone(full_estimator)}

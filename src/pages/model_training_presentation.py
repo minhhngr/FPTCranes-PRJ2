@@ -46,7 +46,9 @@ def load_compatible_training_audit(root: Path) -> dict[str, Any]:
     if not candidates:
         return {"available": False, "reason": "No training audit runs are available."}
 
-    last_reason = "No complete compatible training audit run was found."
+    last_reason = (
+        "No complete training audit matched the current source data and audit requirements."
+    )
     relevant_kinds = {"fold_membership", "tuning_trials", "model_comparison"}
     for log_path in candidates:
         try:
