@@ -19,12 +19,16 @@ from components.language import get_translator
 
 
 def _current():
-    import streamlit as st
-    from streamlit.runtime.scriptrunner import get_script_run_ctx
+    try:
+        import streamlit as st
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
 
-    if get_script_run_ctx(suppress_warning=True) is None:
+        if get_script_run_ctx(suppress_warning=True) is None:
+            return get_translator(SimpleNamespace(session_state={}))
+        return get_translator(st)
+    except (AttributeError, ImportError):
+        # CLI / batch context — no Streamlit runtime available.
         return get_translator(SimpleNamespace(session_state={}))
-    return get_translator(st)
 
 
 def _src(key: str, **values) -> str:
