@@ -8,6 +8,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from components.language import get_translator
+
 
 def read_csv(root: Path, rel: str) -> pd.DataFrame:
     return pd.read_csv(root / "outputs" / rel)
@@ -107,10 +109,11 @@ def apply_filters(df: pd.DataFrame, filters: dict[str, list[str]]) -> pd.DataFra
 def downloadable_table(
     st, df: pd.DataFrame, title: str, key: str, file_name: str | None = None, height=350
 ):
+    i18n = get_translator(st)
     st.markdown(f"#### {title}")
-    st.dataframe(df, width="stretch", hide_index=True, height=height)
+    st.dataframe(i18n.frame(df), width="stretch", hide_index=True, height=height)
     st.download_button(
-        "Download CSV",
+        i18n.text("common.download_csv"),
         df.to_csv(index=False).encode("utf-8"),
         file_name=file_name or f"{key}.csv",
         mime="text/csv",
@@ -203,7 +206,7 @@ def interpretation_card(
     interpretation: str,
     action: str | None = None,
     tone: str = "info",
-    title: str = "Data-driven interpretation",
+    title: str | None = None,
 ):
     """Consistent narrative block placed under Streamlit evidence charts.
 
@@ -212,6 +215,8 @@ def interpretation_card(
     observation, interpretation and action so chart commentary remains
     scientific instead of becoming generic prose.
     """
+    t = get_translator(st).text
+    title = title if title is not None else t("interpretation.title")
     icon = {"info": "🔎", "success": "✅", "warning": "⚠️", "error": "⛔"}.get(tone, "🔎")
     bg = {"info": "#f4f9ff", "success": "#f2fbf5", "warning": "#fff9ed", "error": "#fff2f2"}.get(
         tone, "#f4f9ff"
@@ -222,13 +227,13 @@ def interpretation_card(
         "warning": "#f3c96b",
         "error": "#ef9b9b",
     }.get(tone, "#9bc8f2")
-    action_html = f"<div><b>Next action:</b> {action}</div>" if action else ""
+    action_html = f"<div><b>{t('interpretation.action')}</b> {action}</div>" if action else ""
     st.markdown(
         f"""
         <div style="background:{bg};border:1px solid {border};border-left:5px solid {border};padding:12px 15px;border-radius:10px;margin:8px 0 16px 0;">
           <div style="font-weight:700;margin-bottom:6px;">{icon} {title}</div>
-          <div><b>Observed:</b> {observation}</div>
-          <div><b>Interpretation:</b> {interpretation}</div>
+          <div><b>{t('interpretation.observed')}</b> {observation}</div>
+          <div><b>{t('interpretation.meaning')}</b> {interpretation}</div>
           {action_html}
         </div>
         """,

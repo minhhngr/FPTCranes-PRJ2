@@ -16,7 +16,7 @@ def open_admin_page(label: str) -> AppTest:
     app.session_state["auth_role"] = "admin"
     app.run()
     assert not app.exception
-    app.radio[0].set_value(label).run()
+    app.radio(key="workflow_page").set_value(f"page{int(label.split('.')[0]):02d}").run()
     return app
 
 
@@ -34,73 +34,28 @@ def test_model_pages_open_from_real_entrypoint(label, title):
     assert any(item.value == title for item in app.title)
 
 
-@pytest.mark.parametrize(
-    ("label", "training_expander"),
-    [
-        (
-            "4. Model Comparison",
-            "Latest training validation: folds and candidate models",
-        ),
-        (
-            "5. Best Model & Importance",
-            "Latest training validation: tuning and Full/Top-2 variants",
-        ),
-    ],
-)
-def test_training_validation_unavailable_is_truthful_collapsed_and_actionable(
-    label, training_expander
-):
+@pytest.mark.parametrize("label", ["4. Model Comparison", "5. Best Model & Importance"])
+def test_deprecated_training_validation_panels_are_not_rendered(label):
     app = open_admin_page(label)
-    assert any(item.value == "Training & validation evidence" for item in app.subheader)
-    assert any(
-        "No verified training-validation evidence" in item.value
-        for item in app.warning
-    )
-    expanders = [item for item in app.expander if item.label == training_expander]
-    assert len(expanders) == 1
-    assert expanders[0].proto.expanded is False
-    if label.startswith("5."):
-        final_expanders = [
-            item
-            for item in app.expander
-            if item.label
-            == "Latest training validation: holdout, explainability and uncertainty"
-        ]
-        assert len(final_expanders) == 1
-        assert final_expanders[0].proto.expanded is False
-    assert any(item.value == "Training validation unavailable" for item in app.info)
-    assert any("training_validation.py inspect --workspace ." in item.value for item in app.code)
     rendered = "\n".join(
-        str(item.value) for item in [*app.markdown, *app.caption, *app.code]
+        str(item.value)
+        for item in [*app.subheader, *app.markdown, *app.caption, *app.info, *app.warning]
     )
-    assert "tests/fixtures" not in rendered
-    assert "/home/" not in rendered
+    assert "Training & validation evidence" not in rendered
+    assert "Latest training validation: folds and candidate models" not in [
+        item.label for item in app.expander
+    ]
+    assert "Latest training validation: tuning and Full/Top-2 variants" not in [
+        item.label for item in app.expander
+    ]
+    assert "Latest training validation: holdout, explainability and uncertainty" not in [
+        item.label for item in app.expander
+    ]
+    assert "compatible" not in rendered.lower()
 
 
-@pytest.mark.parametrize(
-    ("label", "expected_models", "expected_record_count"),
-    [
-        (
-            "4. Model Comparison",
-            [
-                "Random Forest",
-                "Gradient Boosting",
-                "Ridge Regression",
-                "Dummy Median",
-                "Linear Regression",
-            ],
-            5,
-        ),
-        (
-            "5. Best Model & Importance",
-            ["Random Forest (selected family)", "Full 13", "Top 2"],
-            3,
-        ),
-    ],
-)
-def test_current_pages_show_historical_5w1h_report_and_raw_training_log(
-    monkeypatch, label, expected_models, expected_record_count
-):
+@pytest.mark.parametrize("label", ["4. Model Comparison", "5. Best Model & Importance"])
+def test_current_pages_show_sorted_training_log_at_footer(monkeypatch, label):
     def forbidden(*_args, **_kwargs):
         raise AssertionError("training/model operation reached by historical report UI")
 
@@ -112,17 +67,12 @@ def test_current_pages_show_historical_5w1h_report_and_raw_training_log(
 
     app = open_admin_page(label)
     assert not app.exception
-    assert any(item.value == "Historical Branch B training report" for item in app.subheader)
-    assert any("Historical primary-pipeline + supplemental evidence" in item.value for item in app.warning)
     markdown = [item.value for item in app.markdown]
-    assert sum(value.startswith("**Who:**") for value in markdown) == expected_record_count
-    for question in ("What", "When", "Where", "Why", "How"):
-        assert sum(value.startswith(f"**{question}:**") for value in markdown) == expected_record_count
-    for model in expected_models:
-        assert f"#### {model}" in markdown
-    assert any("Branch A cluster assignments are not salary-model features" in value for value in markdown)
-    assert "Historical training activity log and downloads" in [
-        item.label for item in app.expander
+    assert not any(value.startswith("**Who:**") for value in markdown)
+    expander_labels = [item.label for item in app.expander]
+    assert expander_labels[-2:] == [
+        "Training log and audit downloads",
+        "Upload & process a new dataset",
     ]
     event_tables = [
         item.value
@@ -130,11 +80,17 @@ def test_current_pages_show_historical_5w1h_report_and_raw_training_log(
         if {"sequence", "operation", "status", "evidence_ref"} <= set(item.value.columns)
     ]
     assert event_tables
-    assert len(event_tables[0]) <= 200
+    assert len(event_tables[-1]) <= 200
+    events = event_tables[-1].fillna("")
+    status_rank = {"started": 0, "completed": 1}
+    observed = [
+        (str(row.operation).casefold(), status_rank.get(str(row.status).casefold(), 2), str(row.model).casefold())
+        for row in events.itertuples()
+    ]
+    assert observed == sorted(observed)
     buttons = {item.label for item in app.get("download_button")}
-    assert "Download historical 5W1H report" in buttons
     assert "Download complete structured training log" in buttons
-    assert any(item.value == "Training validation unavailable" for item in app.info)
+    assert not any("5W1H" in label for label in buttons)
 
 
 def _plot_specs(app: AppTest) -> dict[str, dict]:

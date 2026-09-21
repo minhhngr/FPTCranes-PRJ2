@@ -65,6 +65,7 @@ from .training_report import (
     build_inner_fold_explanation,
     build_metric_catalog,
     build_model_conclusions,
+    build_training_log,
     build_ui_summary,
     evaluate_outcome,
     render_report,
@@ -78,9 +79,9 @@ from .training_runtime import (
     summarize_runtime_samples,
 )
 from .training_search import (
+    conditional_gridsearch_rf_search,
     evaluate_matched_variants,
     fit_final_variants,
-    run_declared_rf_searches,
 )
 
 MAX_CSV_BYTES = 100 * 1024 * 1024
@@ -225,7 +226,7 @@ def inspect_workspace(
                 "assurance_limit": "Local evidence cannot prove absence of external use.",
             },
             "fit_budget": {
-                "maximum_fits": 540,
+                "maximum_fits": 720,
                 "maximum_benchmark_predict_calls": 1784,
             },
             "fits_performed": 0,
@@ -617,15 +618,16 @@ def _write_training_pack(
             )
         ),
     }
+    run_context = {
+        "who": f"local operator; reviewer {approval['reviewer']}",
+        "what": "continuous annual salary regression with five candidate families",
+        "when": f"approved {approval['approved_at']}",
+        "where": f"outputs/training_validation/{run_id}",
+        "why": "compare models without future leakage",
+        "how": "whole-month partitions, expanding folds and one frozen holdout evaluation",
+    }
     report = render_report(
-        run_context={
-            "who": f"local operator; reviewer {approval['reviewer']}",
-            "what": "continuous annual salary regression with five candidate families",
-            "when": f"approved {approval['approved_at']}",
-            "where": f"outputs/training_validation/{run_id}",
-            "why": "compare models without future leakage",
-            "how": "whole-month partitions, expanding folds and one frozen holdout evaluation",
-        },
+        run_context=run_context,
         fold_explanation=fold_text,
         model_conclusions=conclusions,
     )
@@ -707,13 +709,33 @@ def _write_training_pack(
     )
     (staging / "fold_explanation.md").write_text(fold_text, encoding="utf-8")
     (staging / "report.md").write_text(report, encoding="utf-8")
-    (staging / "training.log").write_text(
-        "Training validation completed.\n"
-        f"Selected family: {comparison['selection']['selected_family']}.\n"
-        f"Fits performed: {fit_count}; benchmark predictions: 1782 warm-context plus 2 first-loaded.\n"
-        "Inference reserve was not evaluated.\n",
-        encoding="utf-8",
+    training_log = build_training_log(
+        run_context=run_context,
+        requested_shares=policy["split_targets"],
+        actual_counts=counts,
+        actual_shares=approval["actual_shares"],
+        fold_summary=all_fold_summary,
+        candidate_fold_metrics=comparison["evaluation"].fold_metrics,
+        candidate_summary=comparison["summary"],
+        fit_diagnostic_rows=comparison["fit_diagnostics"],
+        ablation=ablation,
+        fold_importance=fold_importance,
+        importance_drift=importance_drift,
+        selection=comparison["selection"],
+        tuning_trials=tuning_trials,
+        tuning_summary=tuning_summary,
+        variant_metrics=variant_metrics,
+        holdout_metrics=holdout_metrics,
+        holdout_predictions=holdout_predictions,
+        encoded_importance=encoded_importance,
+        permutation_importance=permutation,
+        subgroups=subgroups,
+        uncertainty=uncertainty,
+        outcome=outcome,
+        operational=operational,
+        fit_count=fit_count,
     )
+    (staging / "training.log").write_text(training_log, encoding="utf-8")
     importance_chart = (
         permutation.groupby("name", as_index=False)["mae_increase"].mean()
     )
@@ -795,6 +817,10 @@ def run_workspace(
         output_staging.mkdir(parents=True)
         with TrainingEventWriter(output_staging / "events.jsonl", run_id) as events:
             operation = events.start("run", message="Authorized training validation started.")
+            partition_operation = events.start(
+                "partition_validation",
+                message="Validating the approved chronological 80/19/1 partition and temporal folds.",
+            )
             frame = _load_authorized_frame(
                 raw_path, membership, target_partitions={"TRAIN"}
             )
@@ -859,6 +885,23 @@ def run_workspace(
             all_fold_summary = pd.concat(
                 [fold_summary, *inner_summaries], ignore_index=True
             )
+            events.complete(
+                partition_operation,
+                message="Chronological partition and expanding monthly folds validated.",
+                details={
+                    "requested_shares": policy["split_targets"],
+                    "actual_counts": membership["partition"].value_counts().to_dict(),
+                    "actual_shares": approval["actual_shares"],
+                    "outer_fold_count": len(outer_folds),
+                    "inner_fold_count": len(inner_folds),
+                    "reserve_used": False,
+                },
+            )
+            comparison_operation = events.start(
+                "candidate_comparison",
+                message="Training five frozen model families on identical outer folds.",
+                planned_units=25,
+            )
             comparison = compare_training_partition(
                 frame, membership, outer_folds, models=models
             )
@@ -879,29 +922,95 @@ def run_workspace(
                 features=MODEL_FEATURES,
                 families=policy["feature_families"],
             )
-
-            def evaluator_factory(context_id: str):
-                folds = inner_contexts[context_id]
-
-                def evaluate(params: dict[str, Any], _fold_ids: list[str]) -> list[float]:
-                    result = evaluate_frozen_models(
-                        frame,
-                        membership,
-                        MODEL_FEATURES,
-                        {"Random Forest": RandomForestRegressor(random_state=seed, n_jobs=1, **params)},
-                        folds,
-                    )
-                    return result.fold_metrics.sort_values("fold_ordinal")["validation_MAE"].tolist()
-
-                return evaluate
-
-            searches = run_declared_rf_searches(
-                selected_family=comparison["selection"]["selected_family"],
-                contexts={name: [fold.fold_id for fold in folds] for name, folds in inner_contexts.items()},
-                policy=policy["rf_search"],
-                evaluator_factory=evaluator_factory,
-                seed=seed,
+            events.complete(
+                comparison_operation,
+                message="Five-model comparison, fit diagnosis, ablation, and fold importance completed.",
+                details={
+                    "candidate_folds": len(comparison["evaluation"].fold_metrics),
+                    "selected_family": comparison["selection"]["selected_family"],
+                    "lowest_cv_mae_model": comparison["selection"]["lowest_mae_model"],
+                    "selection_method": comparison["selection"]["selection_method"],
+                },
             )
+
+            searches = {}
+            for context_id, context_folds in inner_contexts.items():
+                selected_family = comparison["selection"]["selected_family"]
+                if selected_family != "Random Forest":
+                    skip_operation = events.start(
+                        "grid_search_skip",
+                        message=f"GridSearchCV eligibility checked for {context_id}.",
+                    )
+                    searches[context_id] = conditional_gridsearch_rf_search(
+                        selected_family=selected_family,
+                        search_id=f"rf-{context_id}",
+                        frame=frame,
+                        membership=membership,
+                        features=MODEL_FEATURES,
+                        folds=context_folds,
+                        policy=policy["rf_search"],
+                        seed=seed,
+                    )
+                    events.complete(
+                        skip_operation,
+                        message=f"GridSearchCV skipped for {context_id} because Random Forest was not selected.",
+                        details={
+                            "context_id": context_id,
+                            "selected_family": selected_family,
+                            "reason": searches[context_id].reason,
+                        },
+                    )
+                    continue
+                grid_operation = events.start(
+                    "grid_search",
+                    message=f"GridSearchCV started for {context_id}.",
+                    planned_units=len(policy["rf_search"]["n_estimators"])
+                    * len(policy["rf_search"]["max_depth"]),
+                )
+
+                def log_grid_candidate(row: dict[str, Any], *, context: str = context_id) -> None:
+                    candidate_operation = events.start(
+                        "grid_search_candidate",
+                        message=f"GridSearchCV candidate evaluated for {context}.",
+                    )
+                    events.complete(
+                        candidate_operation,
+                        message=f"GridSearchCV candidate completed for {context}.",
+                        details={
+                            "context_id": context,
+                            "trial_id": row["trial_id"],
+                            "params": row["params"],
+                            "rank": row["rank"],
+                            "mae_mean": row["mae_mean"],
+                            "r2_mean": row["r2_mean"],
+                            "status": row["status"],
+                        },
+                    )
+
+                searches[context_id] = conditional_gridsearch_rf_search(
+                    selected_family=selected_family,
+                    search_id=f"rf-{context_id}",
+                    frame=frame,
+                    membership=membership,
+                    features=MODEL_FEATURES,
+                    folds=context_folds,
+                    policy=policy["rf_search"],
+                    seed=seed,
+                    on_step=log_grid_candidate,
+                )
+                events.complete(
+                    grid_operation,
+                    message=f"GridSearchCV completed for {context_id}.",
+                    details={
+                        "context_id": context_id,
+                        "inner_fold_ids": [fold.fold_id for fold in context_folds],
+                        "scoring": policy["rf_search"]["scoring"],
+                        "status": searches[context_id].status,
+                        "winner": searches[context_id].winner,
+                    },
+                )
+            if any(result.status == "failed" for result in searches.values()):
+                raise EvidenceContractError("GridSearchCV did not produce a valid Random Forest candidate")
             trial_tables = [result.trials for result in searches.values() if not result.trials.empty]
             tuning_trials = pd.concat(trial_tables, ignore_index=True) if trial_tables else pd.DataFrame(columns=["search_id", "status"])
             tuning_summary = {
@@ -913,6 +1022,10 @@ def run_workspace(
                 }
                 for context, result in searches.items()
             }
+            final_evaluation_operation = events.start(
+                "final_evaluation",
+                message="Fitting frozen Full and Top-2 variants before one-time holdout evaluation.",
+            )
             selected = comparison["selection"]["selected_family"]
             fold_params = {
                 fold.fold_id: (searches[fold.fold_id].winner or {})
@@ -1093,8 +1206,19 @@ def run_workspace(
                 limits=approval,
                 scientific_outcome=outcome["status"],
             )
+            events.complete(
+                final_evaluation_operation,
+                message="Frozen variant, holdout, explainability, subgroup, uncertainty, and runtime evidence completed.",
+                details={
+                    "selected_family": selected,
+                    "holdout_rows": holdout_rows,
+                    "reserve_used": False,
+                    "scientific_status": outcome["status"],
+                    "operational_status": operational["operational_status"],
+                },
+            )
             fit_count = 25 + 30 + sum(item.actual_fit_count for item in searches.values()) + 10 + 2 + 5
-            if fit_count > 540 or benchmark_meta["benchmark_predict_calls"] + 2 > 1784:
+            if fit_count > 720 or benchmark_meta["benchmark_predict_calls"] + 2 > 1784:
                 raise EvidenceContractError("declared fit/prediction budget was exceeded")
             _write_training_pack(
                 output_staging,
@@ -1162,7 +1286,7 @@ def run_workspace(
                 "scientific_outcome": outcome,
                 "operational_assessment": operational,
                 "fit_count": fit_count,
-                "maximum_fit_count": 540,
+                "maximum_fit_count": 720,
                 "benchmark_predict_calls": 1784,
                 "artifact_bundles": bundle_metadata,
             },

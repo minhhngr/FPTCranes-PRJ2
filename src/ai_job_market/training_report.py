@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -412,6 +413,209 @@ def evaluate_outcome(
         )
     status = "Good" if all(item["verdict"] == "pass" for item in criteria.values()) else "Bad"
     return {"status": status, "criteria": criteria}
+
+
+def build_training_log(
+    *,
+    run_context: dict[str, str],
+    requested_shares: dict[str, float],
+    actual_counts: dict[str, int],
+    actual_shares: dict[str, float],
+    fold_summary: pd.DataFrame,
+    candidate_fold_metrics: pd.DataFrame,
+    candidate_summary: pd.DataFrame,
+    fit_diagnostic_rows: pd.DataFrame,
+    ablation: pd.DataFrame,
+    fold_importance: pd.DataFrame,
+    importance_drift: pd.DataFrame,
+    selection: dict[str, Any],
+    tuning_trials: pd.DataFrame,
+    tuning_summary: dict[str, Any],
+    variant_metrics: pd.DataFrame,
+    holdout_metrics: pd.DataFrame,
+    holdout_predictions: pd.DataFrame,
+    encoded_importance: pd.DataFrame,
+    permutation_importance: pd.DataFrame,
+    subgroups: pd.DataFrame,
+    uncertainty: list[dict[str, Any]],
+    outcome: dict[str, Any],
+    operational: dict[str, Any],
+    fit_count: int,
+) -> str:
+    """Render a deterministic English method log from the persisted evidence values."""
+
+    def number(value: Any, digits: int = 3) -> str:
+        if value is None or pd.isna(value):
+            return "not_available"
+        return f"{float(value):.{digits}f}"
+
+    lines = [
+        "# Training validation execution log",
+        "Evidence-derived method log. Every number below comes from the files in this run pack.",
+        "",
+        "## 5W1H",
+    ]
+    lines.extend(f"{key.title()}: {run_context[key]}" for key in ("who", "what", "when", "where", "why", "how"))
+    lines.extend(
+        [
+            "",
+            "## Step 1 — Partition and leakage boundary",
+            (
+                "Requested split: TRAIN "
+                f"{100 * requested_shares['train']:.2f}% | EVALUATION_HOLDOUT "
+                f"{100 * requested_shares['evaluation_holdout']:.2f}% | INFERENCE_RESERVE "
+                f"{100 * requested_shares['inference_reserve']:.2f}%"
+            ),
+        ]
+    )
+    for partition in ("TRAIN", "EVALUATION_HOLDOUT", "INFERENCE_RESERVE"):
+        lines.append(
+            f"Actual partition | name={partition} | rows={int(actual_counts[partition])} | "
+            f"share={100 * float(actual_shares[partition]):.2f}%"
+        )
+    lines.append(
+        "The split uses complete chronological months, so actual percentages may differ from the requested targets."
+    )
+    lines.append("The inference reserve is excluded from fitting, tuning, and evaluation.")
+    lines.extend(["", "## Step 2 — Feature engineering"])
+    lines.append(
+        "Feature engineering uses the approved raw feature policy. Preprocessing is fitted inside each model pipeline and each temporal fold."
+    )
+    lines.append("Target and row identifiers are excluded from model features.")
+    lines.extend(["", "## Step 3 — Expanding monthly validation folds"])
+    ordered_folds = fold_summary.copy()
+    ordered_folds["_scope_order"] = ordered_folds["scope"].map({"outer": 0, "inner": 1})
+    for _, row in ordered_folds.sort_values(
+        ["_scope_order", "fold_id", "ordinal"]
+    ).iterrows():
+        parent = "TRAIN" if pd.isna(row.parent_fold_id) else row.parent_fold_id
+        lines.append(
+            f"Fold | id={row.fold_id} | scope={row.scope} | parent={parent} | "
+            f"train={row.train_period_min}..{row.train_period_max} ({int(row.train_rows)} rows) | "
+            f"validate={row.validation_period_min}..{row.validation_period_max} "
+            f"({int(row.validation_rows)} rows) | later_unused={int(row.not_used_yet_rows)} | "
+            f"chronology={'pass' if bool(row.chronological_order_ok) else 'fail'} | "
+            f"row_overlap={int(row.row_overlap_count)}"
+        )
+    lines.extend(["", "## Step 4 — Five-model training and evaluation"])
+    lines.append("Classification metrics are not applicable because annual_salary_usd is a continuous regression target.")
+    for _, row in candidate_fold_metrics.sort_values(["fold_ordinal", "model"]).iterrows():
+        lines.append(
+            f"Candidate fold | model={row.model} | fold={row.fold_id} | "
+            f"train_MAE_usd={number(row.train_MAE)} | validation_MAE_usd={number(row.validation_MAE)} | "
+            f"validation_RMSE_usd={number(row.validation_RMSE)} | "
+            f"validation_MedAE_usd={number(row.validation_MedAE)} | "
+            f"validation_R2={number(row.validation_R2)} | fit_wall_s={number(row.fit_wall_s, 6)}"
+        )
+    for _, row in candidate_summary.sort_values("cv_mae_mean_usd").iterrows():
+        lines.append(
+            f"Candidate summary | model={row.model} | CV_MAE_mean_usd={number(row.cv_mae_mean_usd)} | "
+            f"CV_MAE_sd_usd={number(row.cv_mae_sd_usd)} | CV_RMSE_mean_usd={number(row.cv_rmse_mean_usd)} | "
+            f"CV_MedAE_mean_usd={number(row.cv_medae_mean_usd)} | CV_R2_mean={number(row.cv_r2_mean)} | "
+            f"total_fit_wall_s={number(row.total_cv_fit_wall_s, 6)}"
+        )
+    for _, row in fit_diagnostic_rows.sort_values(["model", "fold_id"]).iterrows():
+        lines.append(
+            f"Fit diagnosis | model={row.model} | fold={row.fold_id} | indication={row.fold_indication} | "
+            f"aggregate={row.aggregate_indication} | normalized_MAE_gap={number(row.normalized_mae_gap)}"
+        )
+    lines.append(
+        f"Family selection | lowest_CV_MAE={selection['lowest_mae_model']} | "
+        f"selected={selection['selected_family']} | rule={selection['selection_method']} | "
+        "runtime_used_for_selection=false"
+    )
+    lines.extend(["", "## Step 5 — Feature-family evidence"])
+    for _, row in ablation.sort_values(["removed_family", "fold_id"]).iterrows():
+        lines.append(
+            f"Feature-family ablation | removed={row.removed_family} | fold={row.fold_id} | "
+            f"validation_MAE_usd={number(row.validation_MAE)} | "
+            f"delta_vs_full_usd={number(row.mae_delta_vs_full)}"
+        )
+    for _, row in fold_importance.sort_values(["fold_id", "family"]).iterrows():
+        lines.append(
+            f"Fold importance | fold={row.fold_id} | family={row.family} | "
+            f"normalized_importance={number(row.normalized_importance, 6)}"
+        )
+    for _, row in importance_drift.sort_values("fold_id").iterrows():
+        lines.append(
+            f"Importance drift | previous={row.previous_fold_id} | fold={row.fold_id} | "
+            f"half_L1={number(row.half_l1_drift, 6)}"
+        )
+    lines.extend(["", "## Step 6 — Conditional Random Forest GridSearchCV"])
+    if tuning_trials.empty:
+        for context, summary in sorted(tuning_summary.items()):
+            lines.append(
+                f"Grid search | context={context} | status={summary['status']} | reason={summary['reason']}"
+            )
+    else:
+        for _, row in tuning_trials.sort_values(["search_id", "rank", "trial_ordinal"]).iterrows():
+            lines.append(
+                f"Grid candidate | search={row.search_id} | trial={row.trial_id} | "
+                f"n_estimators={int(row.n_estimators)} | max_depth={row.max_depth} | "
+                f"mean_MAE_usd={number(row.mae_mean)} | sd_MAE_usd={number(row.mae_sd)} | "
+                f"mean_R2={number(row.r2_mean)} | rank={int(row['rank'])} | status={row.status}"
+            )
+        for context, summary in sorted(tuning_summary.items()):
+            lines.append(
+                f"Grid winner | context={context} | status={summary['status']} | "
+                f"parameters={json.dumps(summary['winner'], sort_keys=True)} | fits={int(summary['actual_fit_count'])}"
+            )
+    lines.extend(["", "## Step 7 — Frozen variants and one-time holdout evaluation"])
+    for _, row in variant_metrics.sort_values(["fold_id", "variant"]).iterrows():
+        lines.append(
+            f"Variant fold | fold={row.fold_id} | variant={row.variant} | "
+            f"validation_MAE_usd={number(row.validation_MAE)} | validation_RMSE_usd={number(row.validation_RMSE)} | "
+            f"validation_MedAE_usd={number(row.validation_MedAE)} | validation_R2={number(row.validation_R2)}"
+        )
+    for _, row in holdout_metrics.sort_values("model_role_id").iterrows():
+        lines.append(
+            f"Holdout metric | model={row.model_role_id} | rows={int(row.rows)} | MAE_usd={number(row.MAE)} | "
+            f"RMSE_usd={number(row.RMSE)} | MedAE_usd={number(row.MedAE)} | R2={number(row.R2)}"
+        )
+    for model, rows in holdout_predictions.groupby("model_role_id", sort=True):
+        lines.append(
+            f"Residual evidence | model={model} | rows={len(rows)} | "
+            f"mean_residual_usd={number(rows['residual'].mean())} | "
+            f"median_absolute_error_usd={number(rows['absolute_error'].median())}"
+        )
+    lines.extend(["", "## Step 8 — Explainability, subgroup checks, and uncertainty"])
+    encoded = encoded_importance.groupby(
+        ["model_role_id", "raw_feature"], as_index=False
+    ).agg(
+        importance=("importance", lambda values: values.sum(min_count=1)),
+        method=("method", "first"),
+    )
+    for _, row in encoded.sort_values(
+        ["model_role_id", "importance"], ascending=[True, False], na_position="last"
+    ).iterrows():
+        lines.append(
+            f"Encoded importance | model={row.model_role_id} | method={row.method} | "
+            f"raw_feature={row.raw_feature} | importance={number(row.importance, 6)}"
+        )
+    permutation = permutation_importance.groupby(["kind", "name"], as_index=False)["mae_increase"].mean()
+    for _, row in permutation.sort_values(["kind", "mae_increase"], ascending=[True, False]).iterrows():
+        lines.append(
+            f"Permutation importance | kind={row.kind} | name={row['name']} | mean_MAE_increase_usd={number(row.mae_increase)}"
+        )
+    for _, row in subgroups.sort_values(["model_role_id", "subgroup", "value"]).iterrows():
+        lines.append(
+            f"Subgroup error | model={row.model_role_id} | subgroup={row.subgroup} | value={row.value} | "
+            f"support={int(row.support)} | small_sample={str(bool(row.small_sample)).lower()} | MAE_usd={number(row.MAE)}"
+        )
+    for item in uncertainty:
+        lines.append(
+            f"Empirical q90 band | model={item['model_role_id']} | q90_absolute_error_usd={number(item['q90_absolute_error_usd'])} | "
+            f"same_population_coverage={number(item['same_population_coverage'], 6)} | basis={item['basis']}"
+        )
+    lines.extend(["", "## Step 9 — Status and conclusion"])
+    lines.append(
+        f"Final conclusion | scientific_status={outcome['status']} | operational_status={operational['operational_status']} | fits={fit_count}"
+    )
+    lines.append(
+        "Good means the approved scientific thresholds passed and the model can proceed to human deployment review. Bad means return to feature engineering, training, evaluation, and bounded tuning."
+    )
+    lines.append("Monitoring and retraining require separately approved future data; this run does not activate deployment.")
+    return "\n".join(lines) + "\n"
 
 
 def render_report(

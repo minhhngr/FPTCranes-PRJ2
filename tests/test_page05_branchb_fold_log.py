@@ -60,7 +60,7 @@ def test_page05_shows_branch_b_fold_method_before_tuning_detail() -> None:
     app.session_state["auth_role"] = "admin"
     app.run()
     assert not app.exception
-    app.radio[0].set_value("5. Best Model & Importance").run()
+    app.radio(key="workflow_page").set_value("page05").run()
     assert not app.exception
 
     labels = [item.label for item in app.expander]
@@ -91,7 +91,7 @@ def test_page05_shows_branch_b_fold_method_before_tuning_detail() -> None:
     markdown = [item.value for item in app.markdown]
     assert "**How the fold split works**" in markdown
     assert "**Step-by-step fold execution**" in markdown
-    assert "**Observed Branch B training-log events**" in markdown
+    assert "**Observed Branch B training-log events**" not in markdown
     assert "**Limits**" in markdown
     assert any("Step 1" in value and "rows" in value for value in markdown)
     assert any("not an expanding-window" in value for value in markdown)

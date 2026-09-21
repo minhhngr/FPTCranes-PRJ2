@@ -108,7 +108,7 @@ def test_inspect_is_read_only_and_reports_exact_counts(tmp_path: Path) -> None:
     assert sum(result["proposal"]["actual_counts"].values()) == result["dataset"]["rows"]
     assert result["proposal"]["train_end"] < result["proposal"]["holdout_end"]
     assert result["proposal"]["holdout_end"] < result["dataset"]["period_max"]
-    assert result["fit_budget"]["maximum_fits"] == 540
+    assert result["fit_budget"]["maximum_fits"] == 720
     assert result["fit_budget"]["maximum_benchmark_predict_calls"] == 1784
 
 
@@ -258,7 +258,11 @@ def test_check_command_is_read_only_and_prints_validated_manifest(
 
     def validate(workspace, identity):
         seen.append((workspace, identity))
-        return {"schema_version": "training-validation/v1", "run_id": identity, "execution_status": "complete"}
+        return {
+            "schema_version": "training-validation/v1",
+            "run_id": identity,
+            "execution_status": "complete",
+        }
 
     monkeypatch.setattr("ai_job_market.training_validation.validate_complete_pack", validate)
     assert main(["check", "--workspace", str(tmp_path), "--run-id", run_id]) == 0
@@ -288,9 +292,7 @@ def test_run_rejects_stale_approval_before_creating_a_namespace(tmp_path: Path) 
     assert not (root / "artifacts/training_validation").exists()
 
 
-def test_stage_failure_removes_staging_without_opening_holdout(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_stage_failure_removes_staging_without_opening_holdout(tmp_path: Path, monkeypatch) -> None:
     root, approval = _authorized_workspace(tmp_path)
 
     def fail_comparison(*_args, **_kwargs):
@@ -346,7 +348,7 @@ def test_full_run_cli_publishes_checks_and_reuses_complete_pack(tmp_path: Path) 
     assert completed.returncode == 0, completed.stderr + completed.stdout
     payload = json.loads(completed.stdout)
     assert payload["execution_status"] == "complete"
-    assert payload["fits_performed"] <= 540
+    assert payload["fits_performed"] <= 720
     assert payload["predictions_performed"] == 1784
     run_id = payload["run_id"]
     run_dir = root / "outputs/training_validation" / run_id
@@ -360,21 +362,57 @@ def test_full_run_cli_publishes_checks_and_reuses_complete_pack(tmp_path: Path) 
     report_text = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "Parent-labelled inner tuning folds" in report_text
     assert "outer-3:inner-2" in report_text
+    training_log = (run_dir / "training.log").read_text(encoding="utf-8")
+    assert "# Training validation execution log" in training_log
+    assert "## 5W1H" in training_log
+    assert "Requested split: TRAIN 80.00% | EVALUATION_HOLDOUT 19.00% | INFERENCE_RESERVE 1.00%" in training_log
+    assert "Classification metrics are not applicable" in training_log
+    assert training_log.count("Candidate fold |") == 25
+    assert "Fit diagnosis |" in training_log
+    assert "Feature-family ablation |" in training_log
+    assert "Final conclusion | scientific_status=" in training_log
     ui_summary = json.loads((run_dir / "ui_summary.json").read_text(encoding="utf-8"))
-    assert sum(
-        row["scope"] == "inner"
-        for row in ui_summary["page04"]["fold_method"]["rows"]
-    ) == 18
+    assert sum(row["scope"] == "inner" for row in ui_summary["page04"]["fold_method"]["rows"]) == 18
     runtime_summary = pd.read_csv(run_dir / "runtime_summary.csv")
     assert set(runtime_summary.dropna(subset=["first_load_ms"])["model_id"]) == {
         "final_full",
         "final_top2",
     }
     reserve_ids = set(
-        pd.read_csv(run_dir / "partition_membership.csv")
-        .query("partition == 'INFERENCE_RESERVE'")["row_id"]
+        pd.read_csv(run_dir / "partition_membership.csv").query("partition == 'INFERENCE_RESERVE'")[
+            "row_id"
+        ]
     )
     assert not reserve_ids & set(predictions["row_id"])
+    tuning_trials = pd.read_csv(run_dir / "tuning_trials.csv")
+    if not tuning_trials.empty:
+        assert set(tuning_trials["stage"]) == {"grid-search"}
+        assert tuning_trials["scoring"].eq("neg_mean_absolute_error").all()
+        assert {
+            "method_version",
+            "n_estimators",
+            "max_depth",
+            "r2_mean",
+            "rank",
+            "fold_mae",
+            "fold_r2",
+            "evidence_ref",
+        } <= set(tuning_trials)
+        assert training_log.count("Grid candidate |") == len(tuning_trials)
+    events = [
+        json.loads(line)
+        for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    event_types = [event["event_type"] for event in events]
+    assert "partition_validation_started" in event_types
+    assert "candidate_comparison_started" in event_types
+    assert "final_evaluation_started" in event_types
+    assert event_types.count("grid_search_candidate_started") == len(tuning_trials)
+    assert any(event["event_type"] == "grid_search_started" for event in events) == (
+        not tuning_trials.empty
+    )
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["training_method_version"] == "gridsearchcv-temporal/v1"
 
     checked = subprocess.run(
         [
@@ -396,7 +434,11 @@ def test_full_run_cli_publishes_checks_and_reuses_complete_pack(tmp_path: Path) 
     )
     assert checked.returncode == 0, checked.stderr
 
-    before = {path.relative_to(root): path.stat().st_mtime_ns for path in root.rglob("*") if path.is_file()}
+    before = {
+        path.relative_to(root): path.stat().st_mtime_ns
+        for path in root.rglob("*")
+        if path.is_file()
+    }
     reused = subprocess.run(
         command,
         cwd=checkout,

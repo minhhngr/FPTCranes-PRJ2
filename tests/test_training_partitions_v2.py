@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 
 import pandas as pd
 import pytest
@@ -13,6 +14,7 @@ from ai_job_market.training_partitions import (
     propose_partition,
     reconcile_exposure,
     summarize_folds,
+    temporal_fold_splitter,
     validate_fold_summary,
 )
 
@@ -143,9 +145,71 @@ def test_nested_folds_are_within_parent_and_monthly_counts_reconcile() -> None:
     for fold in outer:
         count_lookup = counts.set_index("period")["row_count"]
         assert sum(count_lookup[p] for p in fold.train_months) == len(fold.train_row_ids)
-        assert sum(count_lookup[p] for p in fold.validation_months) == len(
-            fold.validation_row_ids
-        )
+        assert sum(count_lookup[p] for p in fold.validation_months) == len(fold.validation_row_ids)
+
+
+def test_temporal_splitter_exposes_only_declared_context_rows() -> None:
+    frame = dated_rows([2] * 12)
+    membership = build_partition_membership(
+        frame, dataset_id="data-1", train_end="2025-10", holdout_end="2025-11"
+    )
+    train = membership[membership["partition"] == "TRAIN"]
+    outer = build_expanding_monthly_folds(
+        train, n_splits=5, scope="outer", parent_population_id="TRAIN:data-1"
+    )
+    parent = train[train["row_id"].isin(outer[0].train_row_ids)]
+    inner = build_expanding_monthly_folds(
+        parent,
+        n_splits=3,
+        scope="inner",
+        parent_population_id=outer[0].membership_hash,
+        parent_fold_id=outer[0].fold_id,
+        search_id="rf-outer-1",
+    )
+
+    splitter, positions = temporal_fold_splitter(membership, inner)
+    splits = list(splitter.split(range(len(positions))))
+
+    assert len(splits) == 3
+    assert set(positions) == set(
+        membership.set_index("row_id").loc[
+            list(
+                {
+                    row_id
+                    for fold in inner
+                    for row_id in fold.train_row_ids + fold.validation_row_ids
+                }
+            )
+        ]["source_position"]
+    )
+    for (train_indices, validation_indices), fold in zip(splits, inner, strict=True):
+        assert not set(train_indices) & set(validation_indices)
+        assert max(positions[train_indices]) != max(positions[validation_indices])
+        assert max(fold.train_months) < min(fold.validation_months)
+
+
+def test_temporal_splitter_rejects_protected_partition_rows() -> None:
+    frame = dated_rows([2] * 12)
+    membership = build_partition_membership(
+        frame, dataset_id="data-1", train_end="2025-10", holdout_end="2025-11"
+    )
+    train = membership[membership["partition"] == "TRAIN"]
+    fold = build_expanding_monthly_folds(
+        train,
+        n_splits=1,
+        scope="inner",
+        parent_population_id="TRAIN:data-1",
+        search_id="rf-invalid",
+    )[0]
+    protected = membership[membership["partition"] == "EVALUATION_HOLDOUT"].iloc[0]
+    invalid = replace(
+        fold,
+        validation_row_ids=(protected["row_id"],),
+        validation_months=(protected["period"],),
+    )
+
+    with pytest.raises(EvidenceContractError, match="protected partition"):
+        temporal_fold_splitter(membership, [invalid])
 
 
 def test_fold_summary_rejects_count_mutation() -> None:
