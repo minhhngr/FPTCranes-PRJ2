@@ -173,21 +173,57 @@ FPTCranes-PRJ2_full_v2/
 
 ## Install and run
 
+### Option 1 — Plain Python (Windows, macOS, Linux)
+
+Works on any machine with Python 3.12+ available. No `make` required.
+
 ```bash
 python -m venv .venv
-# Windows
+# Windows (cmd)
 .venv\Scripts\activate
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
 # macOS/Linux
 source .venv/bin/activate
 
 python -m pip install -r requirements.txt
-python pipeline.py
-# Add fold/trial/split/feature detail while keeping structured JSON file-only:
-python pipeline.py --debuglog
-python validate_release.py
+
+# Full offline pipeline (training + all outputs/artifacts)
+python scripts/run_training.py
+python scripts/run_training.py --data path/to/other.csv       # custom dataset
+python scripts/run_training.py --workspace runs/demo          # isolated workspace
+
+# Supplemental UI evidence for Model Comparison / Best Model pages
+python scripts/run_ui_evidence.py                             # generate
+python scripts/run_ui_evidence.py --check                     # verify freshness
+
+# Tests + Streamlit app
 python -m pytest -q
 streamlit run streamlit.py
 ```
+
+> Legacy entry points `python pipeline.py` and `python validate_release.py`
+> continue to work.  `python pipeline.py --debuglog` adds fold/trial/split/feature
+> detail while keeping structured JSON file-only.
+
+### Option 2 — uv + Makefile (recommended for contributors)
+
+Uses [uv](https://github.com/astral-sh/uv) to manage the virtual environment. The
+same targets work on Linux/macOS with GNU Make and on Windows via WSL, Git Bash,
+or `mingw32-make` / Chocolatey `make`.
+
+```bash
+make app                       # launch the Streamlit app
+make training                  # run the offline pipeline
+make training DATA=other.csv WORKSPACE=runs/demo
+make ui_evidence               # generate supplemental UI evidence
+make ui_evidence_check         # verify UI evidence is still valid
+make test                      # uv run pytest -q
+make ruff_check                # ruff check + format
+```
+
+Both options invoke the same cross-platform scripts under `scripts/`, so the
+Makefile targets and the plain-`python` commands are equivalent.
 
 Demo credentials:
 
