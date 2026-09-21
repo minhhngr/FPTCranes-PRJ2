@@ -18,6 +18,15 @@ from ai_job_market.training_evidence_io import (
     sha256_file,
     validate_complete_pack,
 )
+from components.presentation import (
+    _display,
+    _label,
+    _src,
+    _tr,
+    display_column_config,
+    display_frame,
+    translate_figure,
+)
 
 _RUN_ID = re.compile(r"^tv-[0-9a-f]{32}$")
 _UTC_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -26,11 +35,11 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 MAX_TABLE_ROWS = 100_000
 MAX_PREVIEW_ROWS = 200
 CANDIDATES = {
-    "Dummy Median",
-    "Linear Regression",
-    "Ridge Regression",
-    "Random Forest",
-    "Gradient Boosting",
+    _src("model_evidence.dummy_median_accc4f4"),
+    _src("page04_model_comparison.linear_regression_5c0d967"),
+    _src("page04_model_comparison.ridge_regression_1be6652"),
+    _src("page04_model_comparison.random_forest_4c8e7b7"),
+    _src("page04_model_comparison.gradient_boosting_a8b554e"),
 }
 FINAL_ROLES = {"final_full", "final_top2"}
 ALL_ROLES = CANDIDATES | FINAL_ROLES
@@ -44,12 +53,14 @@ def _unavailable(code: str, message: str, *, invalid: list[dict[str, str]] | Non
         "invalid_candidate_count": len(invalid or []),
         "invalid_candidates": (invalid or [])[:20],
         "inspect_command": (
-            ".venv/bin/python training_validation.py inspect --workspace . "
-            "--policy config/training_validation.json"
+            _src(
+                "training_validation_presentation.venv_bin_python_training_validation_py_inspect_5b11e92"
+            )
         ),
         "next_action": (
-            "Obtain eligible future prepared data and exact partition/exposure approval "
-            "before an offline run."
+            _src(
+                "training_validation_presentation.obtain_eligible_future_prepared_data_and_exact_a2fa384"
+            )
         ),
         "fallback_used": False,
     }
@@ -58,10 +69,14 @@ def _unavailable(code: str, message: str, *, invalid: list[dict[str, str]] | Non
 def _parse_utc(value: Any) -> datetime:
     text = str(value)
     if not _UTC_TIMESTAMP.fullmatch(text):
-        raise ValueError("manifest generated_at must be a strict UTC timestamp")
+        raise ValueError(
+            _src("training_validation_presentation.manifest_generated_at_must_be_a_strict_18619b6")
+        )
     parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     if parsed.utcoffset() is None:
-        raise ValueError("manifest generated_at must include UTC")
+        raise ValueError(
+            _src("training_validation_presentation.manifest_generated_at_must_include_utc_b828926")
+        )
     return parsed
 
 
@@ -69,63 +84,92 @@ def discover_latest_training_validation(workspace: Path | str) -> dict[str, Any]
     try:
         root = Path(workspace).resolve(strict=True)
     except OSError:
-        return _unavailable("ROOT_MISSING", "The selected evidence workspace is unavailable.")
+        return _unavailable(
+            "ROOT_MISSING",
+            _src(
+                "training_validation_presentation.the_selected_evidence_workspace_is_unavailable_33e8ab3"
+            ),
+        )
     try:
         pack_root = safe_workspace_path(root, "outputs/training_validation")
     except EvidenceContractError:
         return _unavailable(
-            "PACK_ROOT_UNSAFE", "The training-validation evidence root is not a safe local path."
+            "PACK_ROOT_UNSAFE",
+            _src(
+                "training_validation_presentation.the_training_validation_evidence_root_is_not_287a4fb"
+            ),
         )
     if not pack_root.is_dir():
         return _unavailable(
-            "PACK_ROOT_MISSING", "No offline training-validation pack has been published."
+            "PACK_ROOT_MISSING",
+            _src(
+                "training_validation_presentation.no_offline_training_validation_pack_has_been_0fb9b07"
+            ),
         )
     candidates = [
-        path
-        for path in pack_root.iterdir()
-        if path.is_dir() and _RUN_ID.fullmatch(path.name)
+        path for path in pack_root.iterdir() if path.is_dir() and _RUN_ID.fullmatch(path.name)
     ]
     if len(candidates) > MAX_RUNS:
         return _unavailable(
             "PACK_LIMIT_EXCEEDED",
-            f"Training-validation discovery exceeds the {MAX_RUNS}-run safety limit.",
+            _src(
+                "training_validation_presentation.training_validation_discovery_exceeds_the_value0_run_6f8cef9",
+                value0=f"{MAX_RUNS}",
+            ),
         )
     if not candidates:
-        return _unavailable("NO_FINAL_PACK", "No immutable final training-validation run exists.")
+        return _unavailable(
+            "NO_FINAL_PACK",
+            _src(
+                "training_validation_presentation.no_immutable_final_training_validation_run_exists_c2979d6"
+            ),
+        )
     valid: list[tuple[datetime, str, dict[str, Any], Path]] = []
     invalid: list[dict[str, str]] = []
     for directory in candidates:
         try:
             if directory.is_symlink():
-                raise EvidenceContractError("run directory cannot be a symlink")
+                raise EvidenceContractError(
+                    _src(
+                        "training_validation_presentation.run_directory_cannot_be_a_symlink_6e847da"
+                    )
+                )
             manifest_path = safe_workspace_path(
                 root, Path("outputs/training_validation") / directory.name / "manifest.json"
             )
             if not manifest_path.is_file() or manifest_path.stat().st_size > 1024 * 1024:
-                raise EvidenceContractError("manifest is missing or oversized")
+                raise EvidenceContractError(
+                    _src(
+                        "training_validation_presentation.manifest_is_missing_or_oversized_33916f9"
+                    )
+                )
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             generated = _parse_utc(manifest.get("generated_at"))
             validated = validate_complete_pack(root, directory.name)
             if validated.get("run_id") != directory.name:
-                raise EvidenceContractError("run identity mismatch")
+                raise EvidenceContractError(
+                    _src("training_validation_presentation.run_identity_mismatch_720a2a5")
+                )
             valid.append((generated, directory.name, validated, manifest_path))
         except (EvidenceContractError, OSError, UnicodeError, ValueError, json.JSONDecodeError):
             invalid.append(
                 {
                     "run_id": directory.name,
                     "reason_code": "PACK_INCOMPATIBLE",
-                    "message": "The candidate pack failed integrity or schema validation.",
+                    "message": _src(
+                        "training_validation_presentation.the_candidate_pack_failed_integrity_or_schema_0bdd3ff"
+                    ),
                 }
             )
     if not valid:
         return _unavailable(
             "NO_VALID_PACK",
-            "No complete training-validation pack passed the integrity and format checks.",
+            _src(
+                "training_validation_presentation.no_complete_training_validation_pack_passed_the_76aa41b"
+            ),
             invalid=invalid,
         )
-    generated, run_id, manifest, manifest_path = max(
-        valid, key=lambda item: (item[0], item[1])
-    )
+    generated, run_id, manifest, manifest_path = max(valid, key=lambda item: (item[0], item[1]))
     return {
         "available": True,
         "run_id": run_id,
@@ -146,17 +190,32 @@ def _entry_map(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def _source_path(root: Path, entries: dict[str, dict[str, Any]], filename: str) -> Path:
     entry = entries.get(filename)
     if entry is None:
-        raise ValueError(f"required evidence file is missing: {filename}")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.required_evidence_file_is_missing_value0_a2126b7",
+                value0=f"{filename}",
+            )
+        )
     path = safe_workspace_path(root, entry["path"])
     if not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
-        raise ValueError(f"evidence file is unavailable or oversized: {filename}")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.evidence_file_is_unavailable_or_oversized_value0_e48df93",
+                value0=f"{filename}",
+            )
+        )
     return path
 
 
 def _read_csv(root: Path, entries: dict[str, dict[str, Any]], filename: str) -> pd.DataFrame:
     frame = pd.read_csv(_source_path(root, entries, filename))
     if len(frame) > MAX_TABLE_ROWS:
-        raise ValueError(f"evidence table exceeds row limit: {filename}")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.evidence_table_exceeds_row_limit_value0_115f5a1",
+                value0=f"{filename}",
+            )
+        )
     return frame
 
 
@@ -167,7 +226,13 @@ def _read_json(root: Path, entries: dict[str, dict[str, Any]], filename: str) ->
 def _require_columns(frame: pd.DataFrame, filename: str, columns: set[str]) -> None:
     missing = sorted(columns - set(frame.columns))
     if missing:
-        raise ValueError(f"{filename} is missing columns: {missing}")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.value0_is_missing_columns_value1_ead4a8a",
+                value0=f"{filename}",
+                value1=f"{missing}",
+            )
+        )
 
 
 def _transcript_row(stage: str, step: str, source: str, **values: Any) -> dict[str, Any]:
@@ -205,9 +270,11 @@ def _build_transcript(
     rows: list[dict[str, Any]] = [
         _transcript_row(
             "partition",
-            "Approved chronological partition",
+            _src("training_validation_presentation.approved_chronological_partition_9ef3478"),
             "partition_declaration.json",
-            partition="TRAIN / EVALUATION_HOLDOUT / INFERENCE_RESERVE",
+            partition=_src(
+                "training_validation_presentation.train_evaluation_holdout_inference_reserve_6a4e5b3"
+            ),
             status="complete",
             metrics={"counts": partition.get("counts"), "shares": partition.get("shares")},
         )
@@ -216,21 +283,27 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "partition_month",
-                "Declare whole-month partition allocation",
+                _src(
+                    "training_validation_presentation.declare_whole_month_partition_allocation_c2efbf8"
+                ),
                 "monthly_row_counts.csv",
                 partition=row["partition"],
                 validation_periods=row["period"],
                 validation_rows=int(row["row_count"]),
                 status="complete",
-                evidence_ref=str(row.get("evidence_ref") or f"monthly_row_counts.csv#period={row['period']}"),
+                evidence_ref=str(
+                    row.get("evidence_ref") or f"monthly_row_counts.csv#period={row['period']}"
+                ),
             )
         )
-    for _, row in folds.sort_values(["scope", "parent_fold_id", "ordinal"], na_position="first").iterrows():
+    for _, row in folds.sort_values(
+        ["scope", "parent_fold_id", "ordinal"], na_position="first"
+    ).iterrows():
         scope = str(row["scope"])
         rows.append(
             _transcript_row(
                 "outer_fold" if scope == "outer" else "inner_fold",
-                "Expanding monthly fold definition",
+                _src("training_validation_presentation.expanding_monthly_fold_definition_978b4ec"),
                 "fold_summary.csv",
                 fold_id=row["fold_id"],
                 parent_fold_id=row.get("parent_fold_id"),
@@ -241,23 +314,31 @@ def _build_transcript(
                 train_rows=int(row["train_rows"]),
                 validation_rows=int(row["validation_rows"]),
                 not_used_yet_rows=int(row["not_used_yet_rows"]),
-                added_train_rows=None if pd.isna(row.get("added_train_rows")) else int(row["added_train_rows"]),
+                added_train_rows=None
+                if pd.isna(row.get("added_train_rows"))
+                else int(row["added_train_rows"]),
                 holdout_rows_excluded=int(row["holdout_rows_excluded"]),
                 reserve_rows_excluded=int(row["reserve_rows_excluded"]),
                 metrics={
                     "row_overlap_count": int(row.get("row_overlap_count", 0)),
                     "shared_month_count": int(row.get("shared_month_count", 0)),
-                    "expanding_history_ok": None if pd.isna(row.get("expanding_history_ok")) else bool(row.get("expanding_history_ok")),
+                    "expanding_history_ok": None
+                    if pd.isna(row.get("expanding_history_ok"))
+                    else bool(row.get("expanding_history_ok")),
                 },
                 status="complete" if bool(row["chronological_order_ok"]) else "failed",
-                evidence_ref=str(row.get("evidence_ref") or f"fold_summary.csv#fold_id={row['fold_id']}"),
+                evidence_ref=str(
+                    row.get("evidence_ref") or f"fold_summary.csv#fold_id={row['fold_id']}"
+                ),
             )
         )
     for _, row in candidate_folds.sort_values(["fold_ordinal", "model"]).iterrows():
         rows.append(
             _transcript_row(
                 "candidate_fold",
-                "Fit and score frozen candidate on outer fold",
+                _src(
+                    "training_validation_presentation.fit_and_score_frozen_candidate_on_outer_ff02726"
+                ),
                 "candidate_fold_metrics.csv",
                 model_role_id=row["model"],
                 configuration_id=row["configuration_id"],
@@ -286,7 +367,7 @@ def _build_transcript(
     rows.append(
         _transcript_row(
             "selection",
-            "Freeze candidate-family selection",
+            _src("training_validation_presentation.freeze_candidate_family_selection_f722841"),
             "family_selection.json",
             model_role_id=selection.get("selected_family"),
             status="completed",
@@ -301,7 +382,7 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "tuning_trial",
-                "Tuning context result",
+                _src("training_validation_presentation.tuning_context_result_abb762e"),
                 "tuning_summary.json",
                 search_id=f"rf-{context}",
                 parent_fold_id=context,
@@ -315,12 +396,16 @@ def _build_transcript(
     if not tuning_trials.empty:
         required_trial_columns = {"search_id", "trial_ordinal", "trial_id", "status"}
         if required_trial_columns - set(tuning_trials.columns):
-            raise ValueError("nonempty tuning trial evidence is missing identity columns")
+            raise ValueError(
+                _src(
+                    "training_validation_presentation.nonempty_tuning_trial_evidence_is_missing_identity_d0af04d"
+                )
+            )
         for _, row in tuning_trials.sort_values(["search_id", "trial_ordinal"]).iterrows():
             rows.append(
                 _transcript_row(
                     "tuning_trial",
-                    "Evaluate bounded tuning slot",
+                    _src("training_validation_presentation.evaluate_bounded_tuning_slot_4dbf1d9"),
                     "tuning_trials.csv",
                     search_id=row.get("search_id"),
                     trial_id=row.get("trial_id"),
@@ -341,13 +426,23 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "variant_fold",
-                "Evaluate matched Full/Top-2 variant",
+                _src(
+                    "training_validation_presentation.evaluate_matched_full_top_2_variant_fd98689"
+                ),
                 "variant_fold_metrics.csv",
                 model_role_id=f"final_{row['variant']}",
                 fold_id=row["fold_id"],
                 partition="OUTER_VALIDATION",
                 parameters=row.get("params"),
-                metrics={key: row.get(key) for key in ("validation_MAE", "validation_RMSE", "validation_MedAE", "validation_R2")},
+                metrics={
+                    key: row.get(key)
+                    for key in (
+                        "validation_MAE",
+                        "validation_RMSE",
+                        "validation_MedAE",
+                        "validation_R2",
+                    )
+                },
                 status="completed",
                 evidence_ref=f"variant_fold_metrics.csv#fold_id={row['fold_id']}&variant={row['variant']}",
             )
@@ -356,7 +451,9 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "final_fit",
-                "Fit frozen final variant on TRAIN only",
+                _src(
+                    "training_validation_presentation.fit_frozen_final_variant_on_train_only_16ae841"
+                ),
                 "evaluation_declaration.json",
                 model_role_id=role,
                 partition="TRAIN",
@@ -369,12 +466,17 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "holdout",
-                "Score frozen model role once on evaluation holdout",
+                _src(
+                    "training_validation_presentation.score_frozen_model_role_once_on_evaluation_82235b6"
+                ),
                 "holdout_metrics.csv",
                 model_role_id=row["model_role_id"],
                 partition=row["partition"],
                 validation_rows=int(row["rows"]),
-                metrics={key: row.get(key) for key in ("MAE", "RMSE", "MedAE", "R2")},
+                metrics={
+                    key: row.get(key)
+                    for key in ("MAE", "RMSE", _src("model_evidence.medae_ad7020a"), "R2")
+                },
                 status="completed",
                 evidence_ref=f"holdout_metrics.csv#model_role_id={row['model_role_id']}",
             )
@@ -383,7 +485,9 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "holdout_residual",
-                "Aggregate holdout residual and absolute-error evidence",
+                _src(
+                    "training_validation_presentation.aggregate_holdout_residual_and_absolute_error_evidence_617fe24"
+                ),
                 "holdout_predictions.csv",
                 model_role_id=row["model_role_id"],
                 partition="EVALUATION_HOLDOUT",
@@ -397,9 +501,21 @@ def _build_transcript(
             )
         )
     for name, frame, source in (
-        ("Encoded estimator importance", encoded, "encoded_importance.csv"),
-        ("Permutation MAE importance", permutation, "permutation_importance.csv"),
-        ("Support-flagged subgroup metrics", subgroups, "subgroup_metrics.csv"),
+        (
+            _src("training_validation_presentation.encoded_estimator_importance_2bebb11"),
+            encoded,
+            "encoded_importance.csv",
+        ),
+        (
+            _src("training_validation_presentation.permutation_mae_importance_8ea8bbf"),
+            permutation,
+            "permutation_importance.csv",
+        ),
+        (
+            _src("training_validation_presentation.support_flagged_subgroup_metrics_3d348da"),
+            subgroups,
+            "subgroup_metrics.csv",
+        ),
     ):
         rows.append(
             _transcript_row(
@@ -409,9 +525,13 @@ def _build_transcript(
                 status="completed" if len(frame) else "unavailable",
                 metrics={
                     "rows": len(frame),
-                    "methods": sorted(frame["method"].dropna().astype(str).unique().tolist()) if "method" in frame else [],
+                    "methods": sorted(frame["method"].dropna().astype(str).unique().tolist())
+                    if "method" in frame
+                    else [],
                     "repeat_count": int(frame["repeat"].nunique()) if "repeat" in frame else None,
-                    "small_sample_rows": int(frame["small_sample"].fillna(False).astype(bool).sum()) if "small_sample" in frame else None,
+                    "small_sample_rows": int(frame["small_sample"].fillna(False).astype(bool).sum())
+                    if "small_sample" in frame
+                    else None,
                 },
             )
         )
@@ -419,7 +539,9 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "uncertainty",
-                "Describe same-holdout q90 error band",
+                _src(
+                    "training_validation_presentation.describe_same_holdout_q90_error_band_76414eb"
+                ),
                 "uncertainty.json",
                 model_role_id=item.get("model_role_id"),
                 status="completed",
@@ -431,7 +553,7 @@ def _build_transcript(
         rows.append(
             _transcript_row(
                 "conclusion",
-                "Record scoped model conclusion",
+                _src("training_validation_presentation.record_scoped_model_conclusion_5a48684"),
                 "model_conclusions.json",
                 model_role_id=item.get("model_role_id"),
                 status=item.get("status"),
@@ -445,17 +567,23 @@ def _build_transcript(
     rows.append(
         _transcript_row(
             "operational",
-            "Record non-activating operational assessment",
+            _src(
+                "training_validation_presentation.record_non_activating_operational_assessment_776a606"
+            ),
             "operational_assessment.json",
             status=operational.get("operational_status", "not_assessed"),
-            decision="deployment_review_eligible" if operational.get("deployment_review_eligible") else "not_eligible",
+            decision="deployment_review_eligible"
+            if operational.get("deployment_review_eligible")
+            else "not_eligible",
             metrics=operational,
         )
     )
     rows.append(
         _transcript_row(
             "publication",
-            "Publish complete immutable evidence pack",
+            _src(
+                "training_validation_presentation.publish_complete_immutable_evidence_pack_586e55a"
+            ),
             "conclusion.json",
             status=outcome.get("execution_status"),
             model_role_id=outcome.get("selected_model_id"),
@@ -509,7 +637,12 @@ def load_training_validation_view(workspace: Path | str) -> dict[str, Any]:
         ("ui_summary.json", ui_summary),
     ):
         if document.get("run_id") != discovery["run_id"]:
-            raise ValueError(f"{filename} run identity does not match the manifest")
+            raise ValueError(
+                _src(
+                    "training_validation_presentation.value0_run_identity_does_not_match_the_eace090",
+                    value0=f"{filename}",
+                )
+            )
     _require_columns(
         membership,
         "partition_membership.csv",
@@ -517,66 +650,226 @@ def load_training_validation_view(workspace: Path | str) -> dict[str, Any]:
     )
     allowed_partitions = {"TRAIN", "EVALUATION_HOLDOUT", "INFERENCE_RESERVE"}
     if set(membership["partition"]) != allowed_partitions:
-        raise ValueError("partition membership must contain only the three declared roles")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.partition_membership_must_contain_only_the_three_31c6d24"
+            )
+        )
     actual_counts = membership["partition"].value_counts().to_dict()
     declared_counts = {key: int(value) for key, value in partition.get("counts", {}).items()}
     if actual_counts != declared_counts:
-        raise ValueError("partition declaration counts do not reconcile with membership")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.partition_declaration_counts_do_not_reconcile_with_4f9cc78"
+            )
+        )
     if membership["row_id"].duplicated().any() or membership["source_position"].duplicated().any():
-        raise ValueError("partition membership contains duplicate row identities")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.partition_membership_contains_duplicate_row_identities_a1ca198"
+            )
+        )
     _require_columns(monthly, "monthly_row_counts.csv", {"period", "partition", "row_count"})
     monthly_counts = monthly.groupby("partition")["row_count"].sum().astype(int).to_dict()
     if monthly_counts != declared_counts:
-        raise ValueError("monthly row counts do not reconcile with partition membership")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.monthly_row_counts_do_not_reconcile_with_b243700"
+            )
+        )
 
-    _require_columns(folds, "fold_summary.csv", {"fold_id", "scope", "parent_fold_id", "ordinal", "parent_population_rows", "train_period_min", "train_period_max", "validation_period_min", "train_rows", "validation_rows", "not_used_yet_rows", "holdout_rows_excluded", "reserve_rows_excluded", "chronological_order_ok"})
+    _require_columns(
+        folds,
+        "fold_summary.csv",
+        {
+            "fold_id",
+            "scope",
+            "parent_fold_id",
+            "ordinal",
+            "parent_population_rows",
+            "train_period_min",
+            "train_period_max",
+            "validation_period_min",
+            "train_rows",
+            "validation_rows",
+            "not_used_yet_rows",
+            "holdout_rows_excluded",
+            "reserve_rows_excluded",
+            "chronological_order_ok",
+        },
+    )
     outer = folds[folds["scope"] == "outer"].copy()
     inner = folds[folds["scope"] == "inner"].copy()
     if len(outer) != 5 or len(inner) != 18:
-        raise ValueError("fold_summary.csv must contain five outer and 18 inner folds")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.fold_summary_csv_must_contain_five_outer_2994a34"
+            )
+        )
     expected_outer = {f"outer-{index}" for index in range(1, 6)}
     if set(outer["fold_id"]) != expected_outer:
-        raise ValueError("outer fold identities are incomplete")
+        raise ValueError(
+            _src("training_validation_presentation.outer_fold_identities_are_incomplete_5478919")
+        )
     expected_parents = expected_outer | {"final-train"}
     inner_counts = inner.groupby("parent_fold_id").size().to_dict()
     if set(inner_counts) != expected_parents or set(inner_counts.values()) != {3}:
-        raise ValueError("inner folds must contain three rows for each declared parent")
+        raise ValueError(
+            _src("training_validation_presentation.inner_folds_must_contain_three_rows_for_d1c2247")
+        )
     for _, row in folds.iterrows():
-        if int(row["train_rows"] + row["validation_rows"] + row["not_used_yet_rows"]) != int(row["parent_population_rows"]):
-            raise ValueError("fold row counts do not reconcile with the parent population")
-        if int(row["holdout_rows_excluded"]) != declared_counts["EVALUATION_HOLDOUT"] or int(row["reserve_rows_excluded"]) != declared_counts["INFERENCE_RESERVE"]:
-            raise ValueError("fold exclusions do not reconcile with protected partitions")
-    _require_columns(candidate_summary, "candidate_summary.csv", {"model", "configuration_id", "cv_mae_mean_usd", "cv_rmse_mean_usd", "cv_medae_mean_usd", "cv_r2_mean", "total_cv_fit_wall_s"})
+        if int(row["train_rows"] + row["validation_rows"] + row["not_used_yet_rows"]) != int(
+            row["parent_population_rows"]
+        ):
+            raise ValueError(
+                _src(
+                    "training_validation_presentation.fold_row_counts_do_not_reconcile_with_c4a47ca"
+                )
+            )
+        if (
+            int(row["holdout_rows_excluded"]) != declared_counts["EVALUATION_HOLDOUT"]
+            or int(row["reserve_rows_excluded"]) != declared_counts["INFERENCE_RESERVE"]
+        ):
+            raise ValueError(
+                _src(
+                    "training_validation_presentation.fold_exclusions_do_not_reconcile_with_protected_0a21145"
+                )
+            )
+    _require_columns(
+        candidate_summary,
+        "candidate_summary.csv",
+        {
+            "model",
+            "configuration_id",
+            "cv_mae_mean_usd",
+            "cv_rmse_mean_usd",
+            "cv_medae_mean_usd",
+            "cv_r2_mean",
+            "total_cv_fit_wall_s",
+        },
+    )
     if set(candidate_summary["model"]) != CANDIDATES or len(candidate_summary) != 5:
-        raise ValueError("candidate_summary.csv must contain exactly five candidate roles")
-    _require_columns(candidate_folds, "candidate_fold_metrics.csv", {"model", "configuration_id", "fold_id", "fold_ordinal", "train_rows", "validation_rows", "train_MAE", "validation_MAE", "validation_RMSE", "validation_MedAE", "validation_R2", "fit_wall_s"})
+        raise ValueError(
+            _src(
+                "training_validation_presentation.candidate_summary_csv_must_contain_exactly_five_8c0540e"
+            )
+        )
+    _require_columns(
+        candidate_folds,
+        "candidate_fold_metrics.csv",
+        {
+            "model",
+            "configuration_id",
+            "fold_id",
+            "fold_ordinal",
+            "train_rows",
+            "validation_rows",
+            "train_MAE",
+            "validation_MAE",
+            "validation_RMSE",
+            "validation_MedAE",
+            "validation_R2",
+            "fit_wall_s",
+        },
+    )
     if len(candidate_folds) != 25 or set(candidate_folds["model"]) != CANDIDATES:
-        raise ValueError("candidate fold evidence must contain five models by five folds")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.candidate_fold_evidence_must_contain_five_models_3e8c804"
+            )
+        )
     candidate_pairs = set(zip(candidate_folds["model"], candidate_folds["fold_id"], strict=True))
     if candidate_pairs != {(model, fold) for model in CANDIDATES for fold in expected_outer}:
-        raise ValueError("candidate fold identities are incomplete or duplicated")
-    _require_columns(variants, "variant_fold_metrics.csv", {"fold_id", "variant", "validation_MAE", "validation_RMSE", "validation_MedAE", "validation_R2"})
+        raise ValueError(
+            _src(
+                "training_validation_presentation.candidate_fold_identities_are_incomplete_or_duplicated_9cb082b"
+            )
+        )
+    _require_columns(
+        variants,
+        "variant_fold_metrics.csv",
+        {
+            "fold_id",
+            "variant",
+            "validation_MAE",
+            "validation_RMSE",
+            "validation_MedAE",
+            "validation_R2",
+        },
+    )
     if len(variants) != 10 or set(variants["variant"]) != {"full", "top2"}:
-        raise ValueError("variant fold evidence must contain paired Full/Top-2 folds")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.variant_fold_evidence_must_contain_paired_full_2987469"
+            )
+        )
     variant_pairs = set(zip(variants["variant"], variants["fold_id"], strict=True))
-    if variant_pairs != {(variant, fold) for variant in {"full", "top2"} for fold in expected_outer}:
-        raise ValueError("variant fold identities are incomplete or duplicated")
+    if variant_pairs != {
+        (variant, fold) for variant in {"full", "top2"} for fold in expected_outer
+    }:
+        raise ValueError(
+            _src(
+                "training_validation_presentation.variant_fold_identities_are_incomplete_or_duplicated_c085498"
+            )
+        )
     if set(tuning_summary) != expected_parents:
-        raise ValueError("tuning summary must contain five outer and one final TRAIN context")
-    _require_columns(holdout, "holdout_metrics.csv", {"model_role_id", "partition", "rows", "MAE", "RMSE", "MedAE", "R2"})
+        raise ValueError(
+            _src(
+                "training_validation_presentation.tuning_summary_must_contain_five_outer_and_a992084"
+            )
+        )
+    _require_columns(
+        holdout,
+        "holdout_metrics.csv",
+        {
+            "model_role_id",
+            "partition",
+            "rows",
+            "MAE",
+            "RMSE",
+            _src("model_evidence.medae_ad7020a"),
+            "R2",
+        },
+    )
     if set(holdout["model_role_id"]) != ALL_ROLES or len(holdout) != 7:
-        raise ValueError("holdout metrics must contain all seven model roles")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.holdout_metrics_must_contain_all_seven_model_8942176"
+            )
+        )
     if set(holdout["partition"]) != {"EVALUATION_HOLDOUT"}:
-        raise ValueError("holdout metrics must contain EVALUATION_HOLDOUT only; reserve metrics are forbidden")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.holdout_metrics_must_contain_evaluation_holdout_only_03568f6"
+            )
+        )
     if "partition" in predictions and set(predictions["partition"]) != {"EVALUATION_HOLDOUT"}:
-        raise ValueError("holdout predictions must exclude inference reserve")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.holdout_predictions_must_exclude_inference_reserve_ba5471b"
+            )
+        )
     if set(predictions["model_role_id"]) != ALL_ROLES:
-        raise ValueError("holdout predictions must contain all seven model roles")
-    numeric_metrics = candidate_folds[["train_MAE", "validation_MAE", "validation_RMSE", "validation_MedAE", "fit_wall_s"]].to_numpy(dtype=float)
+        raise ValueError(
+            _src(
+                "training_validation_presentation.holdout_predictions_must_contain_all_seven_model_61e575f"
+            )
+        )
+    numeric_metrics = candidate_folds[
+        ["train_MAE", "validation_MAE", "validation_RMSE", "validation_MedAE", "fit_wall_s"]
+    ].to_numpy(dtype=float)
     if not np.isfinite(numeric_metrics).all():
-        raise ValueError("candidate metric evidence contains non-finite required values")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.candidate_metric_evidence_contains_non_finite_required_0743ddd"
+            )
+        )
     if len(conclusions) != 7 or {item.get("model_role_id") for item in conclusions} != ALL_ROLES:
-        raise ValueError("model conclusions must contain all seven model roles")
+        raise ValueError(
+            _src(
+                "training_validation_presentation.model_conclusions_must_contain_all_seven_model_97395a1"
+            )
+        )
 
     prediction_summary = predictions.groupby("model_role_id", as_index=False).agg(
         rows=("row_id", "count"),
@@ -607,8 +900,7 @@ def load_training_validation_view(workspace: Path | str) -> dict[str, Any]:
         outcome=outcome,
     )
     permutation_display = (
-        permutation.groupby(["kind", "name", "scoring"], as_index=False)
-        .agg(
+        permutation.groupby(["kind", "name", "scoring"], as_index=False).agg(
             repeat_count=("repeat", "nunique"),
             mae_increase_mean_usd=("mae_increase", "mean"),
             mae_increase_sd_usd=("mae_increase", "std"),
@@ -641,7 +933,9 @@ def load_training_validation_view(workspace: Path | str) -> dict[str, Any]:
     ):
         downloads.append(
             {
-                "label": f"Download {filename}",
+                "label": _src(
+                    "page04_model_comparison.download_value0_0f5a93c", value0=f"{filename}"
+                ),
                 "filename": filename,
                 "mime": mime,
                 "content": _source_path(root, entries, filename).read_bytes(),
@@ -651,7 +945,9 @@ def load_training_validation_view(workspace: Path | str) -> dict[str, Any]:
         )
     downloads.append(
         {
-            "label": "Download complete evidence-derived transcript (training-validation-transcript.csv)",
+            "label": _src(
+                "training_validation_presentation.download_complete_evidence_derived_transcript_training_validatio_8520f22"
+            ),
             "filename": "training-validation-transcript.csv",
             "mime": "text/csv",
             "content": transcript_buffer.getvalue().encode("utf-8"),
@@ -695,23 +991,34 @@ def load_training_validation_view(workspace: Path | str) -> dict[str, Any]:
         },
         "transcript": transcript,
         "transcript_preview": transcript.head(MAX_PREVIEW_ROWS),
-        "raw_log_preview": _source_path(root, entries, "training.log").read_text(encoding="utf-8")[:16_384],
-        "event_preview": [json.loads(line) for line in _source_path(root, entries, "events.jsonl").read_text(encoding="utf-8").splitlines()[:200] if line.strip()],
-        "report_preview": _source_path(root, entries, "report.md").read_text(encoding="utf-8")[:16_384],
+        "raw_log_preview": _source_path(root, entries, "training.log").read_text(encoding="utf-8")[
+            :16_384
+        ],
+        "event_preview": [
+            json.loads(line)
+            for line in _source_path(root, entries, "events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()[:200]
+            if line.strip()
+        ],
+        "report_preview": _source_path(root, entries, "report.md").read_text(encoding="utf-8")[
+            :16_384
+        ],
         "downloads": downloads,
     }
-
 
 
 def _display_frame(st, frame: pd.DataFrame, *, height: int = 320) -> None:
     display = frame.copy()
     for column in display.select_dtypes(include="object").columns:
         display[column] = display[column].map(
-            lambda value: json.dumps(value, sort_keys=True)
-            if isinstance(value, (dict, list, tuple))
-            else value
+            lambda value: (
+                json.dumps(value, sort_keys=True)
+                if isinstance(value, (dict, list, tuple))
+                else value
+            )
         )
-    st.dataframe(display, hide_index=True, width="stretch", height=height)
+    st.dataframe(display_frame(display), hide_index=True, width="stretch", height=height)
 
 
 def sort_training_events(frame: pd.DataFrame) -> pd.DataFrame:
@@ -724,7 +1031,9 @@ def sort_training_events(frame: pd.DataFrame) -> pd.DataFrame:
         if column not in sorted_frame:
             sorted_frame[column] = None
     status_rank = {"started": 0, "completed": 1}
-    sorted_frame["_operation_order"] = sorted_frame["operation"].fillna("").astype(str).str.casefold()
+    sorted_frame["_operation_order"] = (
+        sorted_frame["operation"].fillna("").astype(str).str.casefold()
+    )
     sorted_frame["_status_order"] = (
         sorted_frame["status"].fillna("").astype(str).str.casefold().map(status_rank).fillna(2)
     )
@@ -742,38 +1051,68 @@ def sort_training_events(frame: pd.DataFrame) -> pd.DataFrame:
 def render_training_log_footer(st, audit: dict[str, Any], *, page: str) -> None:
     """Render the historical audit log as the final section of a model-review page."""
     st.divider()
-    st.subheader("Training logs")
-    with st.expander("Training log and audit downloads", expanded=False):
+    st.subheader(_tr("training_validation_presentation.training_logs_a2ad08f"))
+    with st.expander(
+        _tr("training_validation_presentation.training_log_and_audit_downloads_990569a"),
+        expanded=False,
+    ):
         if not audit.get("available"):
-            st.info(f"Historical training audit unavailable: {audit.get('reason')}")
+            st.info(
+                _tr(
+                    "training_validation_presentation.historical_training_audit_unavailable_value0_155a1ed",
+                    value0=f"{audit.get('reason')}",
+                )
+            )
             return
 
         st.warning(
-            "This audit records a historical pipeline run whose locked-test population was "
-            "already scored. It is review evidence, not unseen future validation."
+            _tr(
+                "training_validation_presentation.this_audit_records_a_historical_pipeline_run_2c388be"
+            )
         )
         with st.container(horizontal=True):
-            st.metric("Pipeline run", audit["pipeline_run_id"], border=True)
-            st.metric("Audit status", audit["training_status"], border=True)
-            st.metric("Audit events", audit["event_count"], border=True)
+            st.metric(
+                _tr("training_validation_presentation.pipeline_run_b0c3a72"),
+                _display(audit["pipeline_run_id"]),
+                border=True,
+            )
+            st.metric(
+                _tr("training_validation_presentation.audit_status_2c74144"),
+                _display(audit["training_status"]),
+                border=True,
+            )
+            st.metric(
+                _tr("training_validation_presentation.audit_events_cc672a8"),
+                _display(audit["event_count"]),
+                border=True,
+            )
         st.caption(
-            f"Audit `{audit['audit_run_id']}` matches the current source data and required "
-            "audit checks. The table is limited to model-related events."
+            _tr(
+                "training_validation_presentation.audit_value0_matches_the_current_source_data_fb7a665",
+                value0=f"{audit['audit_run_id']}",
+            )
         )
         st.markdown(
-            "Events are sorted by **Operation**, then **Status** (Started before Completed), "
-            "then **Model**. Download the complete structured log for the original event order."
+            _tr(
+                "training_validation_presentation.events_are_sorted_by_operation_then_status_ceb76a6"
+            )
         )
         events = sort_training_events(pd.DataFrame(audit.get("event_preview", [])))
         _display_frame(st, events, height=480)
         if audit["relevant_event_count"] > len(events):
             st.caption(
-                f"Preview shows {len(events)} of {audit['relevant_event_count']} "
-                "model-related events."
+                _tr(
+                    "training_validation_presentation.preview_shows_value0_of_value1_model_related_1c9c069",
+                    value0=f"{len(events)}",
+                    value1=f"{audit['relevant_event_count']}",
+                )
             )
         for index, item in enumerate(audit["downloads"]):
             st.download_button(
-                f"Download {item['label'].lower()}",
+                _tr(
+                    "page04_model_comparison.download_value0_0f5a93c",
+                    value0=f"{item['label'].lower()}",
+                ),
                 item["content"],
                 file_name=item["filename"],
                 mime=item["mime"],

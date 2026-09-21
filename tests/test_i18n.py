@@ -130,7 +130,7 @@ def test_metadata_localization_is_shallow_and_does_not_rewrite_unknown_content()
     }
     assert vi.record(raw) == {
         "Trạng thái": "Hoàn tất",
-        "source_file": "outputs/completed.csv",
+        "Tệp nguồn": "outputs/completed.csv",
         "details": {"status": "completed"},
     }
     assert raw["status"] == "completed"
