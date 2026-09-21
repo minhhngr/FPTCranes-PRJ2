@@ -48,7 +48,7 @@ Branch B now generates the richer evidence contract visible in the archive manif
 
 ### B5–B6 — tuning, locked test and explainability
 
-- bounded Random-Forest tuning after the family is frozen
+- bounded `GridSearchCV` Random-Forest tuning after the family is frozen, using the declared chronological inner folds and `n_estimators` × `max_depth` grid
 - one-time locked future evaluation
 - actual vs predicted and residual evidence
 - raw permutation importance

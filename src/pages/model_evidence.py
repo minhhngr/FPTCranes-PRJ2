@@ -128,7 +128,7 @@ def _unavailable_conclusion(missing: str) -> dict[str, Any]:
         "available": False,
         "finding": f"Conclusion unavailable — missing {missing}.",
         "why_it_matters": "The report will not infer a result from incomplete evidence.",
-        "limit": "Restore or regenerate the named compatible evidence before interpretation.",
+        "limit": "Restore or regenerate evidence that matches the current data format before interpretation.",
         "decision_or_use": None,
     }
 

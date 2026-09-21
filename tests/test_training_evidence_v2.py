@@ -126,10 +126,9 @@ def test_repository_policy_locks_feature_families_and_search_bounds(tmp_path: Pa
     repository_policy = Path(__file__).resolve().parents[1] / "config/training_validation.json"
     policy = load_policy(repository_policy)
     assert len(policy["feature_families"]) == 6
-    assert len(policy["rf_search"]["anchors"]) == 4
-    assert sum(len(policy["rf_search"][key]) for key in (
-        "anchors", "n_estimators", "max_depth", "min_samples_leaf", "max_features"
-    )) == 26
+    assert policy["rf_search"]["method_version"] == "gridsearchcv-temporal/v1"
+    assert policy["rf_search"]["scoring"] == "neg_mean_absolute_error"
+    assert len(policy["rf_search"]["n_estimators"]) * len(policy["rf_search"]["max_depth"]) == 36
 
     bad = json.loads(repository_policy.read_text(encoding="utf-8"))
     bad["feature_families"]["experience_education"].append("experience_level")
@@ -185,6 +184,7 @@ def test_complete_pack_validator_checks_required_files_hashes_and_schema(tmp_pat
         )
     manifest = {
         "schema_version": "training-validation/v1",
+        "training_method_version": "gridsearchcv-temporal/v1",
         "run_id": run_id,
         "execution_status": "complete",
         "files": files,
@@ -192,6 +192,12 @@ def test_complete_pack_validator_checks_required_files_hashes_and_schema(tmp_pat
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     assert validate_complete_pack(tmp_path, run_id)["run_id"] == run_id
 
+    old_manifest = manifest | {"training_method_version": "manual-stepwise/v1"}
+    (run_dir / "manifest.json").write_text(json.dumps(old_manifest), encoding="utf-8")
+    with pytest.raises(EvidenceContractError, match="training method"):
+        validate_complete_pack(tmp_path, run_id)
+
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (run_dir / "fold_summary.csv").write_text("corrupt\n", encoding="utf-8")
     with pytest.raises(EvidenceContractError, match="checksum"):
         validate_complete_pack(tmp_path, run_id)
@@ -221,7 +227,9 @@ def test_pack_validator_rejects_staging_and_unknown_schema(tmp_path: Path) -> No
         validate_complete_pack(tmp_path, run_id)
 
 
-def test_holdout_identity_survives_changed_container_and_run_id_cannot_bypass_lock(tmp_path: Path) -> None:
+def test_holdout_identity_survives_changed_container_and_run_id_cannot_bypass_lock(
+    tmp_path: Path,
+) -> None:
     holdout_id = holdout_identity(["row-b", "row-a", "row-c"])
     assert holdout_id == holdout_identity(["row-c", "row-a", "row-b"])
     run1 = "tv-" + "1" * 32

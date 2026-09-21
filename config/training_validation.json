@@ -34,15 +34,11 @@
     "skills": ["required_skills", "skill_count"]
   },
   "rf_search": {
-    "anchors": [
-      {"n_estimators": 300, "min_samples_leaf": 2, "max_features": 0.7, "max_depth": 20},
-      {"n_estimators": 100, "min_samples_leaf": 2, "max_features": 0.8, "max_depth": null},
-      {"n_estimators": 80, "min_samples_leaf": 1, "max_features": 0.8, "max_depth": null},
-      {"n_estimators": 200, "min_samples_leaf": 1, "max_features": 0.7, "max_depth": 20}
-    ],
+    "method_version": "gridsearchcv-temporal/v1",
+    "scoring": "neg_mean_absolute_error",
     "n_estimators": [50, 100, 150, 200, 250, 300],
     "max_depth": [10, 15, 20, 25, 30, null],
-    "min_samples_leaf": [1, 2, 4, 8],
-    "max_features": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    "min_samples_leaf": 2,
+    "max_features": 0.8
   }
 }

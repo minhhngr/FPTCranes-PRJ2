@@ -41,21 +41,22 @@ After the custodian has reviewed and completed a workspace-local approval file, 
 - `EVALUATION_HOLDOUT` is approximately 19%, strictly later, opened once only after model choice and final fitting.
 - `INFERENCE_RESERVE` is approximately 1%, strictly latest, and is never scored.
 - Five outer folds use expanding monthly history inside `TRAIN` only.
-- If Random Forest is selected, each of five outer contexts plus final TRAIN uses three expanding inner folds and the bounded 26-slot stepwise policy.
+- If Random Forest is selected, each of five outer contexts plus final TRAIN uses three expanding inner folds and `GridSearchCV` over the declared `n_estimators` × `max_depth` grid. `min_samples_leaf` and `max_features` are fixed and recorded for every candidate.
+- The search scores negative MAE (reported as lower-is-better MAE), records mean/std R² as secondary descriptive evidence, candidate ranks, timings, fold IDs, parameters, and status. The producer writes one raw structured event per GridSearchCV context and candidate result.
 - Candidate selection uses unrounded mean temporal-CV MAE and the declared overlap/simplicity rule. Runtime evidence does not override scientific selection.
 
 ## Reading a complete pack
 
 Start with these files:
 
-1. `manifest.json` — schema, run identity, inputs, hashes, and file inventory.
+1. `manifest.json` — schema, `gridsearchcv-temporal/v1` method identity, run identity, inputs, hashes, and file inventory. Older manual-search packs are invalid for revised-method claims.
 2. `report.md` — human-readable 5W1H narrative, fold method, findings, limitations, and next actions.
 3. `fold_explanation.md`, `fold_summary.csv`, `monthly_row_counts.csv` — exact monthly construction and row counts.
 4. `candidate_summary.csv`, `family_selection.json`, `model_conclusions.json` — five-model comparison and explicit decisions.
 5. `holdout_metrics.csv`, `holdout_predictions.csv` — one-time evaluation evidence; never reserve results.
 6. `runtime_summary.csv`, `operational_assessment.json` — descriptive measurements and separately configured budget verdicts.
 7. `agent_summary.json` and `ui_summary.json` — machine-readable projections derived from the same authoritative tables.
-8. `events.jsonl` and `training.log` — append-only structured events and readable execution log.
+8. `events.jsonl` and `training.log` — append-only structured lifecycle events and a detailed English evidence-derived execution log. The readable log answers 5W1H, reconciles requested versus actual whole-month shares, lists all folds and 25 candidate-fold metrics, records fit diagnoses, ablation/importance/drift, every GridSearchCV candidate or skip reason, Full/Top-2 and holdout evidence, residuals, subgroup/q90 evidence, and the final scientific/operational conclusion.
 
 Missing, failed, or skipped evidence must remain explicit. It must not be converted into zeros, favorable claims, or fabricated charts.
 

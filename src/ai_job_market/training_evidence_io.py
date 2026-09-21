@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = "training-validation/v1"
+TRAINING_METHOD_VERSION = "gridsearchcv-temporal/v1"
 POLICY_SCHEMA_VERSION = "training-validation-policy/v1"
 MAX_CONTROL_FILE_BYTES = 1024 * 1024
 _RUN_ID = re.compile(r"^tv-[0-9a-f]{32}$")
@@ -46,16 +47,12 @@ _EXPECTED_FEATURE_FAMILIES = {
     "skills": ["required_skills", "skill_count"],
 }
 _EXPECTED_RF_SEARCH = {
-    "anchors": [
-        {"n_estimators": 300, "min_samples_leaf": 2, "max_features": 0.7, "max_depth": 20},
-        {"n_estimators": 100, "min_samples_leaf": 2, "max_features": 0.8, "max_depth": None},
-        {"n_estimators": 80, "min_samples_leaf": 1, "max_features": 0.8, "max_depth": None},
-        {"n_estimators": 200, "min_samples_leaf": 1, "max_features": 0.7, "max_depth": 20},
-    ],
+    "method_version": "gridsearchcv-temporal/v1",
+    "scoring": "neg_mean_absolute_error",
     "n_estimators": [50, 100, 150, 200, 250, 300],
     "max_depth": [10, 15, 20, 25, 30, None],
-    "min_samples_leaf": [1, 2, 4, 8],
-    "max_features": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    "min_samples_leaf": 2,
+    "max_features": 0.8,
 }
 _POLICY_KEYS = {
     "schema_version",
@@ -358,11 +355,19 @@ def publish_staged_pack(
                 "size": path.stat().st_size,
             }
         )
-    reserved = {"schema_version", "run_id", "execution_status", "generated_at", "files"}
+    reserved = {
+        "schema_version",
+        "training_method_version",
+        "run_id",
+        "execution_status",
+        "generated_at",
+        "files",
+    }
     if metadata and reserved & set(metadata):
         raise EvidenceContractError("publication metadata contains reserved manifest fields")
     manifest = {
         "schema_version": SCHEMA_VERSION,
+        "training_method_version": TRAINING_METHOD_VERSION,
         "run_id": run_id,
         "execution_status": "complete",
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -388,6 +393,8 @@ def validate_complete_pack(workspace: Path | str, run_id: str) -> dict[str, Any]
         raise EvidenceContractError("complete manifest is invalid JSON") from error
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise EvidenceContractError("unsupported training-validation manifest schema")
+    if manifest.get("training_method_version") != TRAINING_METHOD_VERSION:
+        raise EvidenceContractError("unsupported or invalidated training method version")
     if manifest.get("run_id") != run_id or manifest.get("execution_status") != "complete":
         raise EvidenceContractError("manifest identity/status is not complete")
     entries = manifest.get("files")

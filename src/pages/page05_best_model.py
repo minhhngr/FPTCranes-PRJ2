@@ -29,10 +29,7 @@ from .model_training_presentation import (
     tuning_decision_table,
     tuning_method_guide,
 )
-from .training_validation_presentation import (
-    render_historical_training_report,
-    render_page05_training_validation,
-)
+from .training_validation_presentation import render_training_log_footer
 
 
 def _metrics(st, values):
@@ -149,7 +146,7 @@ def _branch_b_fold_table(folds: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _render_branch_b_fold_log(st, manifest, tables, audit):
+def _render_branch_b_fold_log(st, manifest, tables):
     folds = tables.get("candidate_fold_metrics", pd.DataFrame())
     membership = tables.get("fold_membership", pd.DataFrame())
     try:
@@ -200,43 +197,6 @@ def _render_branch_b_fold_log(st, manifest, tables, audit):
                 f"`{row['Validation period']}` (**{int(row['Validation rows']):,} rows**)."
             )
 
-        st.markdown("**Observed Branch B training-log events**")
-        if audit.get("available"):
-            events = pd.DataFrame(audit.get("event_preview", []))
-            if not events.empty and "fold_id" in events:
-                fold_events = events[events["fold_id"].notna()].copy()
-            else:
-                fold_events = pd.DataFrame()
-            if not fold_events.empty:
-                visible = [
-                    column
-                    for column in (
-                        "sequence",
-                        "timestamp",
-                        "operation",
-                        "model",
-                        "fold_id",
-                        "trial_id",
-                        "status",
-                        "evidence_ref",
-                    )
-                    if column in fold_events.columns
-                ]
-                st.dataframe(
-                    fold_events[visible],
-                    hide_index=True,
-                    width="stretch",
-                    height=min(420, 42 + 35 * min(len(fold_events), 10)),
-                )
-                st.caption(
-                    f"Showing {len(fold_events)} fold-labelled event(s) from audit "
-                    f"`{audit['audit_run_id']}`. The complete JSONL remains available in the historical audit downloads."
-                )
-            else:
-                st.info("The compatible historical audit has no fold-labelled events in its bounded preview.")
-        else:
-            st.info("A source-compatible historical training audit is unavailable for raw fold events.")
-
         st.markdown("**Limits**")
         st.markdown(guide["limitations"])
         st.caption(
@@ -249,7 +209,6 @@ def render(st, root, role="admin"):
     style_page(st)
     st.title("5. Best model, diagnostics and uncertainty")
     st.caption("Saved full model · frozen-configuration CV · historically scored test evidence")
-    render_page05_training_validation(st, root)
     try:
         manifest, tables = load_evidence(root)
         variants = tables["variant_metrics"]
@@ -259,10 +218,12 @@ def render(st, root, role="admin"):
         st.code(
             f'PYTHONPATH=src .venv/bin/python -m ai_job_market.ui_evidence --workspace "{root}"'
         )
+        render_training_log_footer(
+            st, load_compatible_training_audit(root), page="page05"
+        )
         return
 
     audit = load_compatible_training_audit(root)
-    render_historical_training_report(st, manifest, tables, audit, page="page05")
 
     test = variants[
         (variants.feature_variant == "full") & (variants.evaluation == "historical_test")
@@ -421,7 +382,7 @@ def render(st, root, role="admin"):
         st.markdown(
             "**Question:** Which parameter values were applied, and what does the inherited sensitivity evidence actually support?"
         )
-        _render_branch_b_fold_log(st, manifest, tables, audit)
+        _render_branch_b_fold_log(st, manifest, tables)
         applied_parameters = manifest["models"]["full:selected"]["parameters"]
         try:
             tuning_guide = tuning_method_guide(
@@ -705,3 +666,5 @@ def render(st, root, role="admin"):
         st.warning(
             "The q90 band is computed and checked on the same historical test population. It is not a formal confidence interval or guaranteed coverage for future or extrapolated scenarios."
         )
+
+    render_training_log_footer(st, audit, page="page05")

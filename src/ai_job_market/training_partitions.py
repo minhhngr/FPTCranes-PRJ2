@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
 from .training_evidence_io import EvidenceContractError
@@ -44,6 +45,70 @@ class FoldDeclaration:
     train_months: tuple[str, ...]
     validation_months: tuple[str, ...]
     membership_hash: str
+
+
+@dataclass(frozen=True)
+class DeclaredTemporalSplitter:
+    """Expose validated declared temporal folds to scikit-learn CV consumers."""
+
+    folds: tuple[tuple[np.ndarray, np.ndarray], ...]
+
+    def split(self, X, y=None, groups=None):
+        del X, y, groups
+        yield from self.folds
+
+    def get_n_splits(self, X=None, y=None, groups=None) -> int:
+        del X, y, groups
+        return len(self.folds)
+
+
+def temporal_fold_splitter(
+    membership: pd.DataFrame, folds: list[FoldDeclaration]
+) -> tuple[DeclaredTemporalSplitter, np.ndarray]:
+    """Return local positions for declared folds without admitting protected rows."""
+    if not folds:
+        raise EvidenceContractError("GridSearchCV requires at least one declared temporal fold")
+    required = {"row_id", "source_position", "period", "partition"}
+    if required - set(membership.columns):
+        raise EvidenceContractError("membership is missing temporal splitter fields")
+    if membership["row_id"].duplicated().any() or membership["source_position"].duplicated().any():
+        raise EvidenceContractError("membership row identity is not unique")
+    lookup = membership.set_index("row_id")["source_position"]
+    partition_lookup = membership.set_index("row_id")["partition"]
+    period_lookup = membership.set_index("row_id")["period"]
+    row_ids = {row_id for fold in folds for row_id in fold.train_row_ids + fold.validation_row_ids}
+    try:
+        if set(partition_lookup.loc[list(row_ids)]) != {"TRAIN"}:
+            raise EvidenceContractError("GridSearchCV fold contains a protected partition row")
+        positions = np.asarray(sorted(lookup.loc[list(row_ids)].astype(int)), dtype=int)
+    except KeyError as error:
+        raise EvidenceContractError("fold row identity is absent from membership") from error
+    local = {int(position): index for index, position in enumerate(positions)}
+    splits: list[tuple[np.ndarray, np.ndarray]] = []
+    for fold in folds:
+        if not fold.train_row_ids or not fold.validation_row_ids:
+            raise EvidenceContractError("GridSearchCV fold requires train and validation rows")
+        if max(fold.train_months) >= min(fold.validation_months):
+            raise EvidenceContractError("GridSearchCV fold chronology is invalid")
+        actual_train_months = set(period_lookup.loc[list(fold.train_row_ids)])
+        actual_validation_months = set(period_lookup.loc[list(fold.validation_row_ids)])
+        if actual_train_months != set(fold.train_months) or actual_validation_months != set(
+            fold.validation_months
+        ):
+            raise EvidenceContractError("GridSearchCV fold periods do not match row membership")
+        try:
+            train = np.asarray(
+                [local[int(lookup[row_id])] for row_id in fold.train_row_ids], dtype=int
+            )
+            validation = np.asarray(
+                [local[int(lookup[row_id])] for row_id in fold.validation_row_ids], dtype=int
+            )
+        except KeyError as error:
+            raise EvidenceContractError("fold row identity is absent from membership") from error
+        if set(train) & set(validation):
+            raise EvidenceContractError("GridSearchCV fold train/validation overlap")
+        splits.append((train, validation))
+    return DeclaredTemporalSplitter(tuple(splits)), positions
 
 
 def _periods(frame: pd.DataFrame) -> pd.Series:
