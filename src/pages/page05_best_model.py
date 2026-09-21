@@ -628,6 +628,11 @@ def render(st, root, role="admin"):
             _audit_downloads(st, audit)
         stages = [
             (
+                "manual_tuning_step1_gridsearch",
+                "candidate",
+                _src("page05_best_model.initial_grid_search_a1b2c3d"),
+            ),
+            (
                 "manual_tuning_step2_n_estimators",
                 "n_estimators",
                 _src("page05_best_model.number_of_trees_40cd852"),
@@ -659,8 +664,30 @@ def render(st, root, role="admin"):
                     )
                 )
                 continue
+            if stem == "manual_tuning_step1_gridsearch":
+                st.subheader(_tr("page05_best_model.initial_gridsearch_title_a1b2c3e"))
             with st.container(width=chart_container_width("P2")):
                 show_plot(st, _tuning_figure(frame, parameter, title), f"p5_tune_{parameter}")
+            if stem == "manual_tuning_step1_gridsearch":
+                st.dataframe(
+                    display_frame(frame),
+                    hide_index=True,
+                    width="stretch",
+                    column_config=display_column_config(
+                        {
+                            "candidate": st.column_config.NumberColumn(format="%d"),
+                            "n_estimators": st.column_config.NumberColumn(format="%d"),
+                            "min_samples_leaf": st.column_config.NumberColumn(format="%d"),
+                            "max_features": st.column_config.NumberColumn(format="%.2f"),
+                            "max_depth": st.column_config.NumberColumn(format="%.0f"),
+                            "CV_R2": st.column_config.NumberColumn(format="%.3f"),
+                            "CV_MAE": st.column_config.NumberColumn(format="$%.0f"),
+                            "CV_MAE_SD": st.column_config.NumberColumn(format="$%.0f"),
+                            "CV_RMSE": st.column_config.NumberColumn(format="$%.0f"),
+                            "CV_MedAE": st.column_config.NumberColumn(format="$%.0f"),
+                        }
+                    ),
+                )
             available += 1
         summary = tables.get("manual_tuning_4params_summary")
         render_conclusion(
