@@ -27,10 +27,8 @@ from .model_evidence import (
     ratio_r2_figure,
     render_conclusion,
     render_metric_glossary,
-    render_page_brief,
 )
 from .model_training_presentation import (
-    TABLE_EMPHASIS_LEGEND,
     candidate_decision_table,
     load_compatible_training_audit,
     load_evidence_download,
@@ -87,6 +85,279 @@ def _audit_downloads(st, audit: dict):
         )
 
 
+def _sliding_window_diagram_html() -> str:
+    """Illustrative 5-fold sliding-window layout (Train / Validation / Test).
+
+    All block columns and the Test column render at the same width so the grid
+    stays visually balanced regardless of cell text length.
+    """
+    train = '<span style="color:#2ea44f;">●</span> Train'
+    valid = '<span style="color:#f38020;">●</span> Validation'
+    empty = '<span style="color:#c9c3d6;">●</span> —'
+    test = '<span style="color:#e5484d;">●</span> Test'
+    rows = [
+        ("Fold 1", [train, valid, empty, empty, empty, empty]),
+        ("Fold 2", [empty, train, valid, empty, empty, empty]),
+        ("Fold 3", [empty, empty, train, valid, empty, empty]),
+        ("Fold 4", [empty, empty, empty, train, valid, empty]),
+        ("Fold 5", [empty, empty, empty, empty, train, valid]),
+    ]
+    # Column widths: Fold label column narrow, then 7 equal columns for
+    # Block 1..6 + Test so each cell renders at the same size.
+    block_columns = 7
+    fold_label_pct = 12
+    block_pct = round((100 - fold_label_pct) / block_columns, 4)
+    colgroup = (
+        "<colgroup>"
+        f'<col style="width:{fold_label_pct}%;">'
+        + f'<col style="width:{block_pct}%;">' * block_columns
+        + "</colgroup>"
+    )
+    th_style = (
+        "padding:10px 8px;text-align:center;font-weight:700;"
+        "border-bottom:2px solid #d0d0d8;background:#fafafa;"
+    )
+    th_label_style = th_style + "text-align:left;"
+    td_style = (
+        "padding:10px 8px;border-bottom:1px solid #eee;"
+        "text-align:center;overflow:hidden;text-overflow:ellipsis;"
+    )
+    td_label_style = td_style + "text-align:left;"
+    head = (
+        "<tr>"
+        f'<th style="{th_label_style}">Fold</th>'
+        + "".join(f'<th style="{th_style}">Block {i}</th>' for i in range(1, 7))
+        + f'<th style="{th_style}">Test</th>'
+        + "</tr>"
+    )
+    body = "".join(
+        "<tr>"
+        + f'<td style="{td_label_style}"><b>{label}</b></td>'
+        + "".join(f'<td style="{td_style}">{cell}</td>' for cell in cells)
+        + f'<td style="{td_style}">{test}</td>'
+        + "</tr>"
+        for label, cells in rows
+    )
+    return (
+        '<div style="margin:6px 0 14px 0;">'
+        '<table style="border-collapse:collapse;font-size:13px;'
+        'width:100%;table-layout:fixed;">'
+        f"{colgroup}<thead>{head}</thead><tbody>{body}</tbody>"
+        "</table></div>"
+    )
+
+
+def _render_sliding_window_block(st, folds, model_name=None):
+    """Render the sliding-window subheader + diagram + timeline evidence table.
+
+    When ``model_name`` is provided, the timeline evidence dataframe is filtered
+    to that model's folds AND enriched with per-fold train/validation metrics
+    (Train MAE, Validation MAE, Train R², Validation R²). When ``model_name`` is
+    ``None`` (General/Overall or Baseline multi-model view), only the shared
+    fold definition columns are shown.
+    """
+    if folds is None or getattr(folds, "empty", True):
+        return
+    df = folds if model_name is None else folds[folds.model == model_name]
+    if df.empty:
+        return
+    st.subheader(_tr("page04_model_comparison.recorded_sliding_window_timeline_976bf7c"))
+    col_diagram, col_table = st.columns(2, gap="medium")
+    with col_diagram:
+        st.markdown(_sliding_window_diagram_html(), unsafe_allow_html=True)
+    with col_table:
+        base_cols = ["fold_id", "validation_period", "train_rows", "validation_rows"]
+        extra_cols = (
+            [c for c in ("train_MAE", "validation_MAE", "train_R2", "validation_R2") if c in df.columns]
+            if model_name is not None
+            else []
+        )
+        select_cols = base_cols + extra_cols
+        timeline_df = (
+            df[select_cols]
+            .drop_duplicates(subset=["fold_id"])
+            .sort_values("fold_id")
+            .rename(
+                columns={
+                    "fold_id": _src("model_evidence.fold_92c122b"),
+                    "validation_period": _src("page04_model_comparison.validation_period_0073795"),
+                    "train_rows": _src("page04_model_comparison.training_rows_3447c69"),
+                    "validation_rows": _src("page04_model_comparison.validation_rows_830d733"),
+                    "train_MAE": "Train MAE",
+                    "validation_MAE": "Validation MAE",
+                    "train_R2": "Train R²",
+                    "validation_R2": "Validation R²",
+                }
+            )
+        )
+        column_config = {}
+        for name, fmt in (
+            ("Train MAE", "$%.0f"),
+            ("Validation MAE", "$%.0f"),
+            ("Train R²", "%.3f"),
+            ("Validation R²", "%.3f"),
+        ):
+            if name in timeline_df.columns:
+                column_config[name] = st.column_config.NumberColumn(format=fmt)
+        st.dataframe(
+            display_frame(timeline_df),
+            hide_index=True,
+            width="stretch",
+            column_config=display_column_config(column_config) if column_config else None,
+        )
+    st.caption(
+        _tr("page04_model_comparison.adjacent_row_blocks_may_share_calendar_months_d0d97f3")
+    )
+
+
+def _percent_ranking(summary, ranking):
+    """Rewrite ranking['why_it_matters'] so the runner-up gap is expressed as a %."""
+    if not ranking.get("available"):
+        return ranking
+    ordered = summary.dropna(subset=["validation_MAE_mean"]).sort_values("validation_MAE_mean")
+    if len(ordered) < 2:
+        return ranking
+    winner_row = ordered.iloc[0]
+    runner_row = ordered.iloc[1]
+    runner_mae = float(runner_row.validation_MAE_mean)
+    winner_mae = float(winner_row.validation_MAE_mean)
+    if runner_mae <= 0:
+        return ranking
+    gap_pct = (runner_mae - winner_mae) / runner_mae * 100
+    dummy_rows = summary[summary.model == _src("model_evidence.dummy_median_accc4f4")]
+    dummy_pct = None
+    if len(dummy_rows):
+        dummy_mae = float(dummy_rows.iloc[0].validation_MAE_mean)
+        if dummy_mae > 0:
+            dummy_pct = (dummy_mae - winner_mae) / dummy_mae * 100
+    parts = [f"It leads {runner_row.model} by {gap_pct:.1f}%"]
+    if dummy_pct is not None:
+        parts.append(f"and is {dummy_pct:.1f}% lower than the Dummy reference")
+    ranking = dict(ranking)
+    ranking["why_it_matters"] = " ".join(parts) + "."
+    return ranking
+
+
+def _render_ranking_conclusion_slim(st, ranking, title):
+    """Compact conclusion box — finding + why-it-matters only (no limit/decision)."""
+    with st.container(border=True):
+        st.markdown(_display(f"**{title}**"))
+        st.markdown(_tr("report.finding", value=_display(ranking["finding"])))
+        st.markdown(
+            _tr(
+                "model_evidence.why_it_matters_value0_325039d",
+                value0=_display(ranking["why_it_matters"]),
+            )
+        )
+
+
+def _workflow_intro(st, manifest, summary):
+    """Sections 1–2 rendered before the detail tabs — backed by live evidence."""
+    st.divider()
+    st.subheader("Workflow")
+
+    # ---- Section 1: Target & Feature Engineering ----
+    with st.expander(
+        "1. " + _tr("page04_model_comparison.target_feature_engineering_title"),
+        expanded=False,
+    ):
+        datasets = manifest.get("datasets", {}) or {}
+        dev_rows = (datasets.get("development") or {}).get("rows")
+        test_rows = (datasets.get("historical_test") or {}).get("rows")
+        test_period = (datasets.get("historical_test") or {}).get("period")
+        target_name = manifest.get("target") or "target"
+
+        # Metric cards — target definition summary (TOP)
+        with st.container(horizontal=True):
+            st.metric("Target column", str(target_name), border=True)
+            st.metric("Transformation", f"log1p({target_name})", border=True)
+            if dev_rows is not None:
+                st.metric("Development pool", f"{int(dev_rows):,} rows", border=True)
+            if test_rows is not None:
+                delta = f"period {test_period}" if test_period else None
+                st.metric(
+                    "Test set (out-of-sample)",
+                    f"{int(test_rows):,} rows",
+                    delta=delta,
+                    delta_color="off",
+                    border=True,
+                )
+
+        # Illustrative chart: right-skewed distribution vs log1p mapping (TOP)
+        import math
+        buckets = 24
+        raw_bins = [10_000 + i * 10_000 for i in range(buckets)]
+        raw_counts = [
+            int(220 * math.exp(-((i - 3) ** 2) / 18) + 8) for i in range(buckets)
+        ]
+        log_bins = [round(math.log1p(x), 2) for x in raw_bins]
+        skew_fig = go.Figure()
+        skew_fig.add_bar(
+            x=raw_bins,
+            y=raw_counts,
+            name="salary (raw USD)",
+            marker_color="#f38020",
+            yaxis="y1",
+        )
+        skew_fig.add_scatter(
+            x=raw_bins,
+            y=log_bins,
+            name="log1p(salary)",
+            mode="lines+markers",
+            marker_color="#2ea44f",
+            yaxis="y2",
+        )
+        skew_fig.update_layout(
+            title="Right-skewed target and its log1p transform (illustrative)",
+            xaxis=dict(title="salary (USD)", tickformat=",.0f", automargin=True),
+            yaxis=dict(title="count of jobs", automargin=True),
+            yaxis2=dict(
+                title="log1p(salary)",
+                overlaying="y",
+                side="right",
+                automargin=True,
+            ),
+            legend=dict(orientation="h", y=-0.25),
+            height=340,
+            margin=dict(l=70, r=70, t=60, b=70),
+        )
+        st.plotly_chart(skew_fig, use_container_width=True)
+        st.caption(
+            "Left axis (bars): synthetic right-skewed salary counts. "
+            "Right axis (line): log1p mapping compresses the long tail into a near-linear range "
+            "where residuals stabilise."
+        )
+
+        # Narrative (1. Target definition · 2. Scaling · 3. 5-Fold split) BELOW
+        st.markdown(_tr("page04_model_comparison.target_feature_engineering_body"))
+
+        st.info(
+            "**Evidence · `"
+            + str(manifest.get("evidence_id", ""))
+            + "`** — target "
+            + f"= `log1p({target_name})` "
+            + (f"· Test period `{test_period}`" if test_period else "")
+        )
+
+    # ---- Section 2: 5 Models used ----
+    with st.expander(
+        "2. " + _tr("page04_model_comparison.models_roster_title"),
+        expanded=False,
+    ):
+        st.markdown(_tr("page04_model_comparison.models_roster_body"))
+        model_names = [str(m) for m in summary.model.tolist()]
+        st.info(
+            "**Evidence** — "
+            + f"`candidate_summary` contains **{len(model_names)} candidates**: "
+            + ", ".join(f"`{name}`" for name in model_names)
+        )
+
+
+def _workflow_reading_and_tuning(st, manifest, summary):
+    """Deprecated — sections 4–5 removed; kept as no-op for call-site compatibility."""
+    return
+
+
 def render(st, root, role="admin"):
     style_page(st)
     st.title(_tr("page04_model_comparison.4_model_comparison_and_temporal_validation_e1a441a"))
@@ -118,21 +389,7 @@ def render(st, root, role="admin"):
     winner = ranked.iloc[0]
     dummy_rows = summary[summary.model == _src("model_evidence.dummy_median_accc4f4")]
     dummy_mae = float(dummy_rows.iloc[0].validation_MAE_mean) if len(dummy_rows) else None
-    ranking = ranking_conclusion(summary)
-    render_page_brief(
-        st,
-        question=_tr(
-            "page04_model_comparison.which_frozen_candidate_performs_best_on_chronological_cc4ea33"
-        ),
-        evidence_scope=_tr(
-            "page04_model_comparison.value0_candidates_across_value1_temporal_folds_value2_02be45f",
-            value0=f"{len(summary)}",
-            value1=f"{int(winner.effective_folds)}",
-            value2=f"{manifest['evidence_id']}",
-        ),
-        takeaway=ranking["finding"],
-        limitation=ranking["limit"],
-    )
+    ranking = _percent_ranking(summary, ranking_conclusion(summary))
     _metrics(
         st,
         [
@@ -233,6 +490,9 @@ def render(st, root, role="admin"):
         )
         _audit_downloads(st, audit)
 
+    # Workflow (Target & FE + 5 candidate models)
+    _workflow_intro(st, manifest, summary)
+
     overall, rf_tab, gb_tab, baseline_tab = st.tabs(
         [
             _tr("page04_model_comparison.overall_comparison_07e5f1e"),
@@ -242,9 +502,6 @@ def render(st, root, role="admin"):
         ]
     )
     with overall:
-        st.markdown(
-            _tr("page04_model_comparison.question_which_candidate_has_the_lowest_temporal_53be758")
-        )
         timeline = (
             folds[["fold_id", "validation_period", "train_rows", "validation_rows"]]
             .drop_duplicates()
@@ -258,22 +515,31 @@ def render(st, root, role="admin"):
                 }
             )
         )
-        with st.container(width=chart_container_width("P3")):
-            st.subheader(_tr("page04_model_comparison.recorded_sliding_window_timeline_976bf7c"))
+        st.subheader(_tr("page04_model_comparison.recorded_sliding_window_timeline_976bf7c"))
+        col_diagram, col_table = st.columns(2, gap="medium")
+        with col_diagram:
+            st.markdown(_sliding_window_diagram_html(), unsafe_allow_html=True)
+        with col_table:
             st.dataframe(display_frame(timeline), hide_index=True, width="stretch")
-            st.caption(
-                _tr("page04_model_comparison.adjacent_row_blocks_may_share_calendar_months_d0d97f3")
-            )
-        show_plot(st, candidate_comparison_figure(summary), "p4_train_validation")
-        render_conclusion(
+        st.caption(
+            _tr("page04_model_comparison.adjacent_row_blocks_may_share_calendar_months_d0d97f3")
+        )
+        col_error, col_ratio = st.columns(2, gap="medium")
+        _row_height = 470
+        with col_error:
+            _fig_error = candidate_comparison_figure(summary)
+            _fig_error.update_layout(height=_row_height)
+            show_plot(st, _fig_error, "p4_train_validation")
+        with col_ratio:
+            _fig_ratio = ratio_r2_figure(summary)
+            _fig_ratio.update_layout(height=_row_height)
+            show_plot(st, _fig_ratio, "p4_ratio_r2")
+        _render_ranking_conclusion_slim(
             st, ranking, title=_tr("page04_model_comparison.candidate_ranking_conclusion_4117e1d")
         )
-        st.markdown(_display(TABLE_EMPHASIS_LEGEND))
         st.table(
             display_frame(candidate_decision_table(summary)), hide_index=True, border="horizontal"
         )
-        with st.container(width=chart_container_width("P2")):
-            show_plot(st, ratio_r2_figure(summary), "p4_ratio_r2")
         table = ranked.copy()
         table.insert(0, "rank", range(1, len(table) + 1))
         table["role"] = [
@@ -285,6 +551,12 @@ def render(st, root, role="admin"):
             for index, row in table.iterrows()
         ]
         table["MAE_gap_usd"] = table.validation_MAE_mean - table.train_MAE_mean
+        if dummy_mae is not None and dummy_mae > 0:
+            table["pct_lower_vs_dummy"] = (
+                (dummy_mae - table.validation_MAE_mean) / dummy_mae * 100
+            )
+        else:
+            table["pct_lower_vs_dummy"] = float("nan")
         table["status"] = [baseline_status(row, dummy_mae) for _, row in table.iterrows()]
         columns = [
             "rank",
@@ -294,6 +566,7 @@ def render(st, root, role="admin"):
             "train_MAE_mean",
             "MAE_gap_usd",
             "validation_R2_mean",
+            "pct_lower_vs_dummy",
             "train_R2_mean",
             "validation_RMSE_mean",
             "validation_MedAE_mean",
@@ -309,6 +582,7 @@ def render(st, root, role="admin"):
                 "train_MAE_mean": _src("page04_model_comparison.train_mae_usd_6583524"),
                 "MAE_gap_usd": _src("page04_model_comparison.mae_gap_usd_52685dc"),
                 "validation_R2_mean": _src("model_evidence.validation_r_538b15c"),
+                "pct_lower_vs_dummy": "% lower vs Dummy",
                 "train_R2_mean": _src("page04_model_comparison.train_r_f7e3d67"),
                 "validation_RMSE_mean": _src("page04_model_comparison.validation_rmse_usd_16f223d"),
                 "validation_MedAE_mean": _src(
@@ -354,6 +628,7 @@ def render(st, root, role="admin"):
                     _src(
                         "page04_model_comparison.mean_fit_time_seconds_6d6846f"
                     ): st.column_config.NumberColumn(format="%.3f"),
+                    "% lower vs Dummy": st.column_config.NumberColumn(format="%.1f%%"),
                 }
             ),
         )
@@ -368,9 +643,6 @@ def render(st, root, role="admin"):
             )
 
     with rf_tab:
-        st.markdown(
-            _tr("page04_model_comparison.question_how_does_random_forest_error_change_b7e566d")
-        )
         if _src("page04_model_comparison.random_forest_4c8e7b7") not in set(folds.model):
             st.warning(
                 _tr("page04_model_comparison.random_forest_fold_evidence_is_unavailable_in_717271f")
@@ -380,6 +652,9 @@ def render(st, root, role="admin"):
                 st,
                 fold_combo_figure(folds, _src("page04_model_comparison.random_forest_4c8e7b7")),
                 "p4_rf_folds",
+            )
+            _render_sliding_window_block(
+                st, folds, model_name=_src("page04_model_comparison.random_forest_4c8e7b7")
             )
             render_conclusion(
                 st,
@@ -431,7 +706,7 @@ def render(st, root, role="admin"):
                     height=450,
                     margin=dict(l=85, r=40, t=80, b=70),
                 )
-                with st.container(width=chart_container_width("P3")):
+                with st.container(width=chart_container_width("P1")):
                     show_plot(st, figure, "p4_rf_drift")
             rf = ranked[ranked.model == _src("page04_model_comparison.random_forest_4c8e7b7")].iloc[
                 0
@@ -459,11 +734,6 @@ def render(st, root, role="admin"):
             )
 
     with gb_tab:
-        st.markdown(
-            _tr(
-                "page04_model_comparison.question_does_gradient_boosting_match_random_forest_8136d1c"
-            )
-        )
         needed = {
             _src("page04_model_comparison.gradient_boosting_a8b554e"),
             _src("page04_model_comparison.random_forest_4c8e7b7"),
@@ -524,6 +794,9 @@ def render(st, root, role="admin"):
                 uniformtext=dict(minsize=10, mode="hide"),
             )
             show_plot(st, figure, "p4_gb_head")
+            _render_sliding_window_block(
+                st, folds, model_name=_src("page04_model_comparison.gradient_boosting_a8b554e")
+            )
             render_conclusion(
                 st,
                 fold_stability_conclusion(
@@ -559,11 +832,6 @@ def render(st, root, role="admin"):
             )
 
     with baseline_tab:
-        st.markdown(
-            _tr(
-                "page04_model_comparison.question_which_candidates_clear_the_dummy_reference_f6bb21e"
-            )
-        )
         names = [
             name
             for name in [
@@ -621,7 +889,7 @@ def render(st, root, role="admin"):
             uniformtext=dict(minsize=10, mode="hide"),
         )
         show_plot(st, figure, "p4_baselines")
-        render_conclusion(
+        _render_ranking_conclusion_slim(
             st, ranking, title=_tr("page04_model_comparison.baseline_comparison_conclusion_625c3c6")
         )
         baseline_display = data[
@@ -655,8 +923,9 @@ def render(st, root, role="admin"):
                 }
             ),
         )
-        st.warning(
-            _tr("page04_model_comparison.a_large_train_validation_gap_is_descriptive_c0b3c8e")
-        )
+        _render_sliding_window_block(st, folds)
+
+    # Workflow sections 4–5 (Reading results · RF tuning) with live evidence
+    _workflow_reading_and_tuning(st, manifest, summary)
 
     render_training_log_footer(st, audit, page="page04")

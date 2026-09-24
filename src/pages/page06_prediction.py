@@ -197,7 +197,7 @@ def render(st, root, role="admin"):
         st.session_state[experience_key] = float(bounds["median"])
     years = st.number_input(
         _tr("page01_data_basic_clean.years_of_experience_29eb74e"),
-        min_value=float(bounds["min"]),
+        min_value=0.0,
         max_value=float(bounds["max"]),
         step=0.5,
         key=experience_key,

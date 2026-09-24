@@ -25,7 +25,6 @@ from .model_evidence import (
     load_evidence,
     render_conclusion,
     render_metric_glossary,
-    render_page_brief,
     tuning_conclusion,
     uncertainty_conclusion,
     variant_conclusion,
@@ -45,6 +44,19 @@ def _metrics(st, values):
     with st.container(horizontal=True):
         for label, value in values:
             st.metric(_display(label), _display(value), border=True)
+
+
+def _render_conclusion_slim(st, conclusion, title):
+    """Compact conclusion box — finding + why-it-matters only (no limit/decision)."""
+    with st.container(border=True):
+        st.markdown(_display(f"**{title}**"))
+        st.markdown(_tr("report.finding", value=_display(conclusion["finding"])))
+        st.markdown(
+            _tr(
+                "model_evidence.why_it_matters_value0_325039d",
+                value0=_display(conclusion["why_it_matters"]),
+            )
+        )
 
 
 def _evidence_download(st, root, manifest, label: str, stem: str, *, key: str):
@@ -302,17 +314,6 @@ def render(st, root, role="admin"):
     ].iloc[0]
     r2_gap = float(test.R2 - cv.R2)
     generalization = generalization_conclusion(cv, test)
-    render_page_brief(
-        st,
-        question=_tr("page05_best_model.how_does_the_saved_full_model_generalize_1fcfb42"),
-        evidence_scope=_tr(
-            "page05_best_model.final_full_configuration_value0_historical_test_rows_37cde38",
-            value0=f"{int(test.row_count)}",
-            value1=f"{manifest['evidence_id']}",
-        ),
-        takeaway=generalization["finding"],
-        limitation=generalization["limit"],
-    )
     _metrics(
         st,
         [
@@ -362,11 +363,8 @@ def render(st, root, role="admin"):
         ]
     )
     with general:
-        st.markdown(
-            _tr("page05_best_model.question_did_dollar_error_and_explained_variance_45765de")
-        )
         show_plot(st, generalization_error_figure(cv, test), "p5_general_dollars")
-        render_conclusion(
+        _render_conclusion_slim(
             st, generalization, title=_tr("page05_best_model.generalization_conclusion_c4a3994")
         )
         r2_figure = go.Figure()
@@ -394,7 +392,7 @@ def render(st, root, role="admin"):
             height=390,
             margin=dict(l=75, r=40, t=80, b=70),
         )
-        with st.container(width=chart_container_width("P2")):
+        with st.container(width=chart_container_width("P1")):
             show_plot(st, r2_figure, "p5_general_r2")
         scorecard = pd.DataFrame(
             [
@@ -460,9 +458,6 @@ def render(st, root, role="admin"):
         st.info(_tr("page05_best_model.lower_error_is_an_error_reduction_not_a0f707a"))
 
     with diagnostics:
-        st.markdown(
-            _tr("page05_best_model.question_where_do_historical_predictions_depart_from_5feb308")
-        )
         show_plot(st, actual_predicted_figure(predictions, "full:selected"), "p5_actual_predicted")
         full = predictions[predictions.model_id == "full:selected"]
         median_residual = float(full.residual_usd.median())
@@ -508,16 +503,13 @@ def render(st, root, role="admin"):
             height=420,
             margin=dict(l=75, r=40, t=80, b=70),
         )
-        with st.container(width=chart_container_width("P3")):
+        with st.container(width=chart_container_width("P1")):
             show_plot(st, residual, "p5_residual")
         st.caption(
             _tr("page05_best_model.scatter_alignment_and_residual_shape_are_diagnostics_37b9020")
         )
 
     with tuning:
-        st.markdown(
-            _tr("page05_best_model.question_which_parameter_values_were_applied_and_ea12653")
-        )
         _render_branch_b_fold_log(st, manifest, tables)
         applied_parameters = manifest["models"]["full:selected"]["parameters"]
         try:
@@ -668,7 +660,7 @@ def render(st, root, role="admin"):
                 continue
             if stem == "manual_tuning_step1_gridsearch":
                 st.subheader(_tr("page05_best_model.initial_gridsearch_title_a1b2c3e"))
-            with st.container(width=chart_container_width("P2")):
+            with st.container(width=chart_container_width("P1")):
                 show_plot(st, _tuning_figure(frame, parameter, title), f"p5_tune_{parameter}")
             if stem == "manual_tuning_step1_gridsearch":
                 st.dataframe(
@@ -738,7 +730,6 @@ def render(st, root, role="admin"):
         )
 
     with reliance:
-        st.markdown(_tr("page05_best_model.question_which_raw_inputs_does_the_fitted_ac4e0a2"))
         permutation = tables.get("variant_permutation_importance", pd.DataFrame())
         if permutation.empty:
             st.warning(_tr("page05_best_model.raw_permutation_evidence_is_unavailable_e289181"))
@@ -775,7 +766,7 @@ def render(st, root, role="admin"):
                 margin=dict(l=250, r=45, t=80, b=65),
                 uniformtext=dict(minsize=10, mode="hide"),
             )
-            with st.container(width=chart_container_width("P3")):
+            with st.container(width=chart_container_width("P1")):
                 show_plot(st, figure, "p5_encoded_importance")
         comparison = variants[variants.evaluation.isin(["dev_cv_mean", "historical_test"])][
             [
@@ -830,7 +821,6 @@ def render(st, root, role="admin"):
         )
 
     with trust:
-        st.markdown(_tr("page05_best_model.question_how_wide_is_the_empirical_historical_72791dd"))
         coverage = float(test.coverage)
         full = predictions[predictions.model_id == "full:selected"]
         tail_ratio = float(test.RMSE / test.MedAE) if test.MedAE else None
@@ -877,7 +867,7 @@ def render(st, root, role="admin"):
             height=430,
             margin=dict(l=80, r=40, t=80, b=70),
         )
-        with st.container(width=chart_container_width("P3")):
+        with st.container(width=chart_container_width("P1")):
             show_plot(st, ecdf, "p5_ecdf")
         render_conclusion(
             st,
