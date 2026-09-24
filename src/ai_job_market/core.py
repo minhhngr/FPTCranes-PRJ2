@@ -2358,9 +2358,9 @@ def run_segmentation(
     }
     representation_comparison = pd.DataFrame(
         {
-            "R": representation_summary["representation_id"].map(_short_r).fillna(
-                representation_summary["representation_id"]
-            ),
+            "R": representation_summary["representation_id"]
+            .map(_short_r)
+            .fillna(representation_summary["representation_id"]),
             "representation_id": representation_summary["representation_id"],
             "representation_label": representation_summary.get("representation_label"),
             "algorithm": representation_summary.get("algorithm"),
@@ -3303,11 +3303,17 @@ def tune_random_forest_manual_steps(
         return trial_summary
 
     # Bước 1: Initial Grid Search với các bộ thông số mẫu bao phủ 4 thông số chính
+    import itertools
+
+    n_est_list = [80, 100, 200, 300]
+    min_leaf_list = [1, 2]
+    max_feat_list = [0.7, 0.8]
+    max_depth_list = [20, None]
     configs = [
-        {"n_estimators": 300, "min_samples_leaf": 2, "max_features": 0.7, "max_depth": 20},
-        {"n_estimators": 100, "min_samples_leaf": 2, "max_features": 0.8, "max_depth": None},
-        {"n_estimators": 80, "min_samples_leaf": 1, "max_features": 0.8, "max_depth": None},
-        {"n_estimators": 200, "min_samples_leaf": 1, "max_features": 0.7, "max_depth": 20},
+        {"n_estimators": n, "min_samples_leaf": m, "max_features": f, "max_depth": d}
+        for n, m, f, d in itertools.product(
+            n_est_list, min_leaf_list, max_feat_list, max_depth_list
+        )
     ]
     rows1 = []
     for i, p in enumerate(configs, 1):
@@ -3324,7 +3330,7 @@ def tune_random_forest_manual_steps(
                 "CV_MedAE": s["MedAE_mean"],
             }
         )
-    df1 = pd.DataFrame(rows1).sort_values("CV_R2", ascending=False).reset_index(drop=True)
+    df1 = pd.DataFrame(rows1).sort_values("CV_R2", ascending=False).reset_index(drop=True).head(4)
     emit_event(
         "candidate_completed",
         step_id="tuning.rf.step1",
@@ -3341,7 +3347,7 @@ def tune_random_forest_manual_steps(
     # Bước 2: Thông số 1 — Tinh chỉnh n_estimators (giữ nguyên min_samples_leaf, max_features, max_depth từ Bước 1)
     best_init = df1.iloc[0]
     depth_val = None if pd.isna(best_init.max_depth) else int(best_init.max_depth)
-    n_vals = [50, 100, 150, 200, 250, 300]
+    n_vals = [200, 250, 300, 350, 400, 450, 500]
     rows2 = []
     for n in n_vals:
         model = RandomForestRegressor(
@@ -3513,7 +3519,7 @@ def tune_random_forest_manual_steps(
     summary_rows = [
         {
             "hyperparameter": "1. n_estimators",
-            "search_space": "[50, 100, 150, 200, 250, 300]",
+            "search_space": "[200, 250, 300, 350, 400, 450, 500]",
             "optimal_value": str(best_n),
             "best_cv_r2": float(df2.iloc[0].CV_R2),
             "best_cv_mae": float(df2.iloc[0].CV_MAE),
@@ -4400,7 +4406,7 @@ def _run_pipeline_impl(
         s1, s2, s3, s4, s5, s_sum = tune_random_forest_manual_steps(
             dev, int(cfg["project"].get("temporal_cv_folds", 5)), seed
         )
-        tuning = s1
+        tuning = s5
         save_csv(s1, stages["bm"] / "tuning_results.csv")
         save_csv(s1, stages["bm"] / "10_best_model_tuning_results.csv")
         save_csv(s1, stages["bm"] / "manual_tuning_step1_gridsearch.csv")

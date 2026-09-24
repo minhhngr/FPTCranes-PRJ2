@@ -276,6 +276,21 @@ def test_dense_actual_predicted_scatter_uses_hover_not_point_text_labels():
     assert "text" not in figure.data[0].mode
 
 
+def test_actual_predicted_scatter_uses_separate_category_traces_when_available():
+    frame = pd.DataFrame(
+        {
+            "model_id": ["m", "m", "m"],
+            "annual_salary_usd": [10, 20, 30],
+            "predicted_salary_usd": [11, 19, 31],
+            "job_title": ["Role 1", "Role 2", "Role 3"],
+            "job_category": ["Data", "AI", "Data"],
+        }
+    )
+    figure = actual_predicted_figure(frame, "m")
+    assert [trace.name for trace in figure.data[:-1]] == ["AI", "Data"]
+    assert all(trace.mode == "markers" for trace in figure.data[:-1])
+
+
 def test_horizontal_importance_reserves_feature_label_margin_and_height():
     frame = pd.DataFrame(
         {

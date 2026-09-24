@@ -91,7 +91,9 @@ def _audit_downloads(st, audit: dict):
 
 
 def _tuning_figure(frame: pd.DataFrame, parameter: str, title: str) -> go.Figure:
-    ordered = frame.sort_values(parameter, key=lambda values: values.astype(str))
+    ordered = frame.sort_values(
+        parameter, key=lambda x: pd.to_numeric(x, errors="coerce").fillna(float("inf"))
+    )
     figure = go.Figure()
     figure.add_bar(
         x=ordered[parameter].astype(str),

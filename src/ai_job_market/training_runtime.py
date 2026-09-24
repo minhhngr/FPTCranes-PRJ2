@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import platform
-import resource
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -77,8 +76,13 @@ def benchmark_prediction(
 
 
 def _max_rss_bytes() -> int:
-    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return int(value * 1024)  # Linux reports KiB.
+    try:
+        import resource
+
+        value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return int(value * 1024)  # Linux reports KiB.
+    except ModuleNotFoundError:
+        return 0
 
 
 def benchmark_bundle_load(
@@ -197,14 +201,12 @@ def compute_accuracy_fit_pareto(evidence: pd.DataFrame) -> pd.DataFrame:
         for _, other in out.iterrows():
             if candidate.model == other.model:
                 continue
-            no_worse = (
-                float(other.cv_mae_mean_usd) <= float(candidate.cv_mae_mean_usd)
-                and float(other.total_cv_fit_wall_s) <= float(candidate.total_cv_fit_wall_s)
-            )
-            strictly_better = (
-                float(other.cv_mae_mean_usd) < float(candidate.cv_mae_mean_usd)
-                or float(other.total_cv_fit_wall_s) < float(candidate.total_cv_fit_wall_s)
-            )
+            no_worse = float(other.cv_mae_mean_usd) <= float(candidate.cv_mae_mean_usd) and float(
+                other.total_cv_fit_wall_s
+            ) <= float(candidate.total_cv_fit_wall_s)
+            strictly_better = float(other.cv_mae_mean_usd) < float(
+                candidate.cv_mae_mean_usd
+            ) or float(other.total_cv_fit_wall_s) < float(candidate.total_cv_fit_wall_s)
             if no_worse and strictly_better:
                 dominators.append(str(other.model))
         dominated_by.append(dominators)
