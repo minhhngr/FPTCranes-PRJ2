@@ -47,3 +47,11 @@ def test_benchmark_selection_uses_source_order_not_targets_or_errors():
     assert select_benchmark_offsets(test, eligible, limit=3) == [0, 2, 3]
     mutated = test.assign(annual_salary_usd=[9999, -1, 100000, 0])
     assert select_benchmark_offsets(mutated, eligible, limit=3) == [0, 2, 3]
+
+
+def test_benchmark_selection_is_repeatable_when_candidates_exceed_limit():
+    test = frame()
+    eligible = pd.Series([True, True, True, True, True, False])
+    selected = select_benchmark_offsets(test, eligible, limit=3)
+    assert selected == [0, 2, 3]
+    assert select_benchmark_offsets(test, eligible, limit=3) == selected

@@ -319,13 +319,17 @@ def render(st, root, role="admin"):
         st.markdown(_tr("page06_prediction.question_what_salary_range_does_this_validated_fafe1a0"))
         results = pd.DataFrame(snapshot["rows"])
         page_count = max(1, math.ceil(len(results) / 10))
-        page = st.number_input(
-            _tr("page06_prediction.prediction_chart_page_87c1d11"),
-            min_value=1,
-            max_value=page_count,
-            value=1,
-            step=1,
-            key="p6_result_page",
+        page = (
+            st.number_input(
+                _tr("page06_prediction.prediction_chart_page_87c1d11"),
+                min_value=1,
+                max_value=page_count,
+                value=1,
+                step=1,
+                key="p6_result_page",
+            )
+            if page_count > 1
+            else 1
         )
         start = (int(page) - 1) * 10
         shown = results.iloc[start : start + 10]
@@ -387,8 +391,17 @@ def render(st, root, role="admin"):
         growth_rows = st.session_state.get("p6_growth_results")
         if growth_rows:
             growth = pd.DataFrame(growth_rows)
+            titles = sorted(growth["job_title"].dropna().unique())
+            selected_titles = st.multiselect(
+                _tr("page06_prediction.job_title_observed_dev_association_5f9e87d"),
+                options=titles,
+                default=titles,
+                key="p6_growth_filter",
+                format_func=_option_label(),
+            )
+            filtered_growth = growth[growth["job_title"].isin(selected_titles)]
             figure = go.Figure()
-            grouped_curves = growth.groupby(
+            grouped_curves = filtered_growth.groupby(
                 ["job_category", "job_title", "validation_mode"], sort=True
             )
             for curve_index, ((category_name, title_name, mode), group) in enumerate(

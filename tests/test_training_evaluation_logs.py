@@ -53,7 +53,7 @@ def test_evaluation_completed_records_all_metrics_and_honest_fit_status(tmp_path
     assert event["locked_test_metrics_status"] == "not_evaluated"
 
 
-def test_manual_rf_tuning_records_all_26_trials_without_changing_rankings(monkeypatch, tmp_path):
+def test_manual_rf_tuning_records_all_55_trials_without_changing_rankings(monkeypatch, tmp_path):
     calls = []
 
     def fake_evaluate(dev, features, model_name, model, n_splits):
@@ -81,9 +81,9 @@ def test_manual_rf_tuning_records_all_26_trials_without_changing_rankings(monkey
         log_path = audit.log_path
 
     events = _events(log_path)
-    assert len([e for e in events if e["event"] == "trial_started"]) == 26
-    assert len([e for e in events if e["event"] == "trial_completed"]) == 26
-    assert len(calls) == 26
+    assert len([e for e in events if e["event"] == "trial_started"]) == 55
+    assert len([e for e in events if e["event"] == "trial_completed"]) == 55
+    assert len(calls) == 55
     assert all(table.CV_R2.is_monotonic_decreasing for table in tables[:5])
 
 

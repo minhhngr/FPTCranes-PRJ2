@@ -245,6 +245,25 @@ def render(st, root, role="admin"):
         st.markdown(
             _tr("page04_model_comparison.question_which_candidate_has_the_lowest_temporal_53be758")
         )
+        timeline = (
+            folds[["fold_id", "validation_period", "train_rows", "validation_rows"]]
+            .drop_duplicates()
+            .sort_values("fold_id")
+            .rename(
+                columns={
+                    "fold_id": _src("model_evidence.fold_92c122b"),
+                    "validation_period": _src("page04_model_comparison.validation_period_0073795"),
+                    "train_rows": _src("page04_model_comparison.training_rows_3447c69"),
+                    "validation_rows": _src("page04_model_comparison.validation_rows_830d733"),
+                }
+            )
+        )
+        with st.container(width=chart_container_width("P3")):
+            st.subheader(_tr("page04_model_comparison.recorded_sliding_window_timeline_976bf7c"))
+            st.dataframe(display_frame(timeline), hide_index=True, width="stretch")
+            st.caption(
+                _tr("page04_model_comparison.adjacent_row_blocks_may_share_calendar_months_d0d97f3")
+            )
         show_plot(st, candidate_comparison_figure(summary), "p4_train_validation")
         render_conclusion(
             st, ranking, title=_tr("page04_model_comparison.candidate_ranking_conclusion_4117e1d")
@@ -338,25 +357,6 @@ def render(st, root, role="admin"):
                 }
             ),
         )
-        timeline = (
-            folds[["fold_id", "validation_period", "train_rows", "validation_rows"]]
-            .drop_duplicates()
-            .sort_values("fold_id")
-            .rename(
-                columns={
-                    "fold_id": _src("model_evidence.fold_92c122b"),
-                    "validation_period": _src("page04_model_comparison.validation_period_0073795"),
-                    "train_rows": _src("page04_model_comparison.training_rows_3447c69"),
-                    "validation_rows": _src("page04_model_comparison.validation_rows_830d733"),
-                }
-            )
-        )
-        with st.container(width=chart_container_width("P3")):
-            st.subheader(_tr("page04_model_comparison.recorded_sliding_window_timeline_976bf7c"))
-            st.dataframe(display_frame(timeline), hide_index=True, width="stretch")
-            st.caption(
-                _tr("page04_model_comparison.adjacent_row_blocks_may_share_calendar_months_d0d97f3")
-            )
         with st.expander(_tr("page04_model_comparison.additional_comparison_download_83bd7e5")):
             _evidence_download(
                 st,

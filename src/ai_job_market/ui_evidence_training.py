@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import time
 from typing import Any
 
@@ -238,4 +239,7 @@ def select_benchmark_offsets(
 ) -> list[int]:
     if len(test) != len(eligible):
         raise ValueError("eligible mask length must match test rows")
-    return [int(index) for index in np.flatnonzero(eligible.to_numpy(dtype=bool))[:limit]]
+    indices = [int(index) for index in np.flatnonzero(eligible.to_numpy(dtype=bool))]
+    if len(indices) <= limit:
+        return indices
+    return random.Random(2026).sample(indices, limit)

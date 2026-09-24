@@ -607,19 +607,38 @@ def fold_combo_figure(folds: pd.DataFrame, model: str) -> go.Figure:
 
 
 def actual_predicted_figure(predictions: pd.DataFrame, model_id: str) -> go.Figure:
+    import plotly.express as px
+
     data = predictions[predictions.model_id == model_id]
     lo = min(data.annual_salary_usd.min(), data.predicted_salary_usd.min())
     hi = max(data.annual_salary_usd.max(), data.predicted_salary_usd.max())
     figure = go.Figure()
-    figure.add_scatter(
-        x=data.annual_salary_usd,
-        y=data.predicted_salary_usd,
-        mode="markers",
-        name=_src("model_evidence.historical_test_rows_4312b04"),
-        text=data.get("job_title"),
-        hovertemplate=_src("model_evidence.actual_x_0f_br_predicted_y_0f_0414ed0"),
-        marker_color=EVIDENCE_COLORS["prediction"],
-    )
+
+    if "job_category" in data and not data.job_category.isna().all():
+        categories = sorted([c for c in data.job_category.unique() if pd.notna(c)])
+        colors = px.colors.qualitative.Plotly
+        for i, category in enumerate(categories):
+            cat_data = data[data.job_category == category]
+            figure.add_scatter(
+                x=cat_data.annual_salary_usd,
+                y=cat_data.predicted_salary_usd,
+                mode="markers",
+                name=str(category),
+                text=cat_data.get("job_title"),
+                hovertemplate=_src("model_evidence.actual_x_0f_br_predicted_y_0f_0414ed0"),
+                marker_color=colors[i % len(colors)],
+            )
+    else:
+        figure.add_scatter(
+            x=data.annual_salary_usd,
+            y=data.predicted_salary_usd,
+            mode="markers",
+            name=_src("model_evidence.historical_test_rows_4312b04"),
+            text=data.get("job_title"),
+            hovertemplate=_src("model_evidence.actual_x_0f_br_predicted_y_0f_0414ed0"),
+            marker_color=EVIDENCE_COLORS["prediction"],
+        )
+
     figure.add_scatter(
         x=[lo, hi],
         y=[lo, hi],
